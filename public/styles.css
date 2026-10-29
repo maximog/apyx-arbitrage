@@ -769,3 +769,64 @@ h1 {
   .cp-cards, .cp-cards.two, .cp-grid2 { grid-template-columns: 1fr; }
   .claim-panel h2 { font-size: 1.5rem; }
 }
+
+/* ---------- Current discount headline (top panel) ---------- */
+.discount-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin: 0 0 22px;
+  padding: 20px 24px;
+  border: 1px solid rgba(240, 24, 70, 0.4);
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(240, 24, 70, 0.16), rgba(255, 255, 255, 0.03) 60%),
+    rgba(8, 8, 8, 0.6);
+}
+.discount-main { display: grid; gap: 6px; }
+.discount-label {
+  color: rgba(244, 244, 244, 0.6);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.discount-main strong {
+  color: var(--white);
+  font-family: "SF Mono", "Roboto Mono", ui-monospace, monospace;
+  font-size: 2.6rem;
+  line-height: 1;
+}
+.discount-main strong.positive { color: #7ee2a8; }
+.discount-main strong.negative { color: #ff9aaa; }
+.discount-main em {
+  color: rgba(244, 244, 244, 0.64);
+  font-size: 0.82rem;
+  font-style: normal;
+  font-weight: 650;
+}
+.discount-meta {
+  display: grid;
+  gap: 8px;
+  text-align: right;
+  color: rgba(244, 244, 244, 0.52);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.discount-meta strong {
+  display: block;
+  margin-top: 3px;
+  color: rgba(244, 244, 244, 0.86);
+  font-family: "SF Mono", "Roboto Mono", ui-monospace, monospace;
+  font-size: 0.86rem;
+  text-transform: none;
+}
+.discount-hero.error { border-color: rgba(255, 154, 170, 0.5); }
+.discount-hero.error .discount-main em { color: #ff9aaa; }
+.discount-hero.loading .discount-main strong { opacity: 0.6; }
+@media (max-width: 720px) {
+  .discount-hero { flex-direction: column; align-items: stretch; }
+  .discount-meta { text-align: left; grid-template-columns: 1fr 1fr; }
+  .discount-main strong { font-size: 2.2rem; }
+}

@@ -57,6 +57,11 @@ const els = {
   rate: document.querySelector("#rateMetric"),
   fairValue: document.querySelector("#fairValueMetric"),
   swapLink: document.querySelector("#swapLink"),
+  discountHero: document.querySelector("#discountHero"),
+  discount: document.querySelector("#discountMetric"),
+  discountDetail: document.querySelector("#discountDetail"),
+  discountSource: document.querySelector("#discountSource"),
+  discountUpdated: document.querySelector("#discountUpdated"),
 };
 
 let latestFairValue = null;
@@ -344,6 +349,95 @@ els.form.addEventListener("submit", (event) => {
 });
 
 els.amount.addEventListener("input", updateInputUsd);
+
+
+// ---------- Current discount (headline) ----------
+// discount = 1 − DEX price / gross apxUSD redemption value per apyUSD
+//   DEX price   = apxUSD paid per apyUSD (KyberSwap quote for a 10,000 apxUSD reference size;
+//                 fallback: priceNative of the deepest apyUSD/apxUSD pool on DexScreener)
+//   gross value = redeem rate (previewWithdraw, net of the vault fee) × (1 + vault unlockingFee)
+const DISCOUNT_REF_APX = 10_000;
+const DISCOUNT_REFRESH_MS = 30_000;
+const DEXSCREENER_URL = `https://api.dexscreener.com/latest/dex/tokens/${TOKENS.apyUSD.address}`;
+let discountRequest = null;
+let lastDiscount = null;
+
+const vaultFee = () => (window.APYX_CURVE ? window.APYX_CURVE.vaultFee : 0.001);
+
+async function fetchDexScreenerPrice() {
+  const response = await fetch(DEXSCREENER_URL, { headers: { accept: "application/json" } });
+  if (!response.ok) throw new Error(`DexScreener HTTP ${response.status}`);
+  const payload = await response.json();
+  const apx = TOKENS.apxUSD.address.toLowerCase();
+  const apy = TOKENS.apyUSD.address.toLowerCase();
+  const pairs = (payload?.pairs || []).filter((pair) =>
+    pair?.baseToken?.address?.toLowerCase() === apy && pair?.quoteToken?.address?.toLowerCase() === apx
+    && Number(pair.priceNative) > 0);
+  if (!pairs.length) throw new Error("DexScreener: no apyUSD/apxUSD pool");
+  pairs.sort((a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0));
+  const top = pairs[0];
+  return { price: Number(top.priceNative), source: `DexScreener · ${top.dexId} pool`, detail: "spot pool price, deepest apyUSD/apxUSD pool" };
+}
+
+async function fetchDexPrice() {
+  try {
+    const quote = await fetchQuote(ethers.parseUnits(String(DISCOUNT_REF_APX), TOKENS.apxUSD.decimals), TOKENS.apyUSD);
+    const out = numberFromWei(quote.amountOutWei, TOKENS.apyUSD.decimals);
+    if (!(out > 0)) throw new Error("empty quote");
+    return { price: DISCOUNT_REF_APX / out, source: "KyberSwap quote", detail: `${DISCOUNT_REF_APX.toLocaleString("en-US")} apxUSD → apyUSD, incl. price impact` };
+  } catch {
+    return fetchDexScreenerPrice();
+  }
+}
+
+function renderDiscount() {
+  if (!lastDiscount) return;
+  const d = lastDiscount;
+  els.discount.textContent = formatPercent(d.discount * 100);
+  setSigned(els.discount, d.discount);
+  els.discountDetail.textContent = `DEX ${formatAmount(d.price, 5)} vs gross redemption ${formatAmount(d.gross, 5)} apxUSD per apyUSD · ${d.detail}`;
+  els.discountSource.textContent = d.source;
+  els.discountUpdated.textContent = new Date(d.time).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+async function refreshDiscount() {
+  if (discountRequest) return discountRequest;
+  els.discountHero.classList.add("loading");
+  discountRequest = Promise.all([fetchDexPrice(), getRedeemRate()])
+    .then(([dex, redeemRate]) => {
+      const gross = redeemRate * (1 + vaultFee());
+      lastDiscount = { ...dex, redeemRate, gross, discount: 1 - dex.price / gross, time: Date.now() };
+      els.discountHero.classList.remove("error");
+      renderDiscount();
+      window.APYX_LIVE_DISCOUNT = lastDiscount;
+      window.dispatchEvent(new CustomEvent("apyx:discount", { detail: lastDiscount }));
+    })
+    .catch(() => {
+      els.discountHero.classList.add("error");
+      els.discountDetail.textContent = lastDiscount
+        ? "Refresh failed (KyberSwap, DexScreener or RPC unreachable); showing last value. Retrying…"
+        : "Couldn't load the live DEX price (KyberSwap, DexScreener or RPC unreachable). Retrying…";
+      if (!lastDiscount) els.discountSource.textContent = "unavailable";
+      window.dispatchEvent(new CustomEvent("apyx:discount-error"));
+    })
+    .finally(() => {
+      els.discountHero.classList.remove("loading");
+      discountRequest = null;
+    });
+  return discountRequest;
+}
+
+// Vault fee may update once on-chain params load; recompute the headline without refetching.
+window.addEventListener("apyx:curve", () => {
+  if (!lastDiscount) return;
+  lastDiscount.gross = lastDiscount.redeemRate * (1 + vaultFee());
+  lastDiscount.discount = 1 - lastDiscount.price / lastDiscount.gross;
+  renderDiscount();
+  window.dispatchEvent(new CustomEvent("apyx:discount", { detail: lastDiscount }));
+});
+
+refreshDiscount();
+window.setInterval(refreshDiscount, DISCOUNT_REFRESH_MS);
 
 loadNativeApy().catch(() => {});
 calculate().catch(() => {});

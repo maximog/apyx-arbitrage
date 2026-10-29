@@ -251,33 +251,46 @@ function render() {
 function sync(fromRange) {
   if (fromRange) $("pDiscount").value = (+$("pDiscountRange").value).toFixed(2);
   else $("pDiscountRange").value = $("pDiscount").value;
-  applyChain(FALLBACK);
-render();
-$("chainStatus").textContent = "Fee parameters: built-in values from 29 Oct 2026 (loading on-chain…)";
-loadOnchain().then((v) => {
-  applyChain(v); render();
-  if (state.live) $("liveDiscount").textContent = pct(liveDiscount());
-  $("chainStatus").textContent = `Fee parameters read live from Ethereum: feeCurve() on UnlockReceipt, unlockingFee() on apyUSD. Edit any field to test other values.`;
-  window.dispatchEvent(new CustomEvent("apyx:curve"));
-}).catch(() => { $("chainStatus").textContent = "Couldn't reach a public RPC; using built-in values read on 29 Oct 2026."; });
+  render();
 }
 
-document.querySelectorAll("#cpForm input").forEach((el) => el.addEventListener("input", () => sync(el.id === "pDiscountRange")));
-const liveDiscount = () => { if (!state.live) return NaN; const gross = state.live.escrow * (1 + params().u); return 1 - state.live.input / gross; };
-$("useLive").addEventListener("click", () => { if (state.live) { $("pDiscount").value = (liveDiscount() * 100).toFixed(2); sync(false); } });
+// Live DEX discount (computed in app.js from the KyberSwap quote / DexScreener pool vs gross redemption value).
+// It pre-fills the discount input and keeps following live refreshes until the user edits the discount manually.
+let discountTouched = false;
+const liveDiscount = () => (state.live ? state.live.discount : NaN);
+function applyLiveDiscount() {
+  const d = liveDiscount(); if (!Number.isFinite(d)) return;
+  const r = $("pDiscountRange"), lo = +r.min / 100, hi = +r.max / 100;
+  const v = Math.min(hi, Math.max(lo, d));
+  $("pDiscount").value = (v * 100).toFixed(2); $("pDiscountRange").value = (v * 100).toFixed(2);
+  // keep the selected-discount marker inside the charts' range
+  const dMin = parseFloat($("pDMin").value), dMax = parseFloat($("pDMax").value);
+  if (v * 100 < dMin) $("pDMin").value = Math.max(0, Math.floor(v * 100 * 2) / 2 - 0.5).toFixed(1);
+  if (v * 100 > dMax) $("pDMax").value = (Math.ceil(v * 100 * 2) / 2 + 0.5).toFixed(1);
+  render();
+}
+document.querySelectorAll("#cpForm input").forEach((el) => el.addEventListener("input", () => {
+  if (el.id === "pDiscount" || el.id === "pDiscountRange") discountTouched = true;
+  sync(el.id === "pDiscountRange");
+}));
+$("useLive").addEventListener("click", () => { if (state.live) { discountTouched = false; applyLiveDiscount(); } });
 $("useNative").addEventListener("click", () => { if (Number.isFinite(state.native)) { $("pAltApr").value = state.native.toFixed(2); render(); } });
+function onLiveDiscount(detail) {
+  state.live = detail; $("liveDiscount").textContent = pct(detail.discount); $("useLive").disabled = false;
+  if (!discountTouched) applyLiveDiscount();
+}
+window.addEventListener("apyx:discount", (e) => onLiveDiscount(e.detail));
 window.addEventListener("apyx:live", (e) => {
-  state.live = e.detail; $("liveDiscount").textContent = pct(liveDiscount()); $("useLive").disabled = false;
   if (Number.isFinite(e.detail.nativeApy)) window.dispatchEvent(new CustomEvent("apyx:native", { detail: { nativeApy: e.detail.nativeApy } }));
 });
 window.addEventListener("apyx:native", (e) => { state.native = e.detail.nativeApy; $("liveNative").textContent = `${state.native.toFixed(2)}%`; $("useNative").disabled = false; });
 let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(render, 120); });
 applyChain(FALLBACK);
 render();
+if (window.APYX_LIVE_DISCOUNT) onLiveDiscount(window.APYX_LIVE_DISCOUNT);
 $("chainStatus").textContent = "Fee parameters: built-in values from 29 Oct 2026 (loading on-chain…)";
 loadOnchain().then((v) => {
   applyChain(v); render();
-  if (state.live) $("liveDiscount").textContent = pct(liveDiscount());
   $("chainStatus").textContent = `Fee parameters read live from Ethereum: feeCurve() on UnlockReceipt, unlockingFee() on apyUSD. Edit any field to test other values.`;
   window.dispatchEvent(new CustomEvent("apyx:curve"));
 }).catch(() => { $("chainStatus").textContent = "Couldn't reach a public RPC; using built-in values read on 29 Oct 2026."; });
