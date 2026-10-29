@@ -10,4 +10,6 @@ Fee model, verified against the on-chain source (Sourcify/Etherscan) and read li
 
 trade return r(t) = (1 − cost(t)) / (1 − discount) − 1; APY eq. = (1 + r)^(365/t) − 1. Optimizes annualized return, not total profit. Not financial advice.
 
+Current discount (top panel, refreshed every 30 s): `1 − DEX price / (redeemRate · (1 + u))`, DEX price = apxUSD per apyUSD from a KyberSwap 10,000 apxUSD quote (fallback: deepest apyUSD/apxUSD pool `priceNative` on DexScreener). It pre-fills the curves' discount input/slider and follows live refreshes until the discount is edited manually ("Use live discount" re-links it).
+
 `npm run build` copies `public/` to `dist/`.
