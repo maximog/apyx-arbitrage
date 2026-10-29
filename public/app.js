@@ -376,7 +376,7 @@ async function fetchDexScreenerPrice() {
   if (!pairs.length) throw new Error("DexScreener: no apyUSD/apxUSD pool");
   pairs.sort((a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0));
   const top = pairs[0];
-  return { price: Number(top.priceNative), source: `DexScreener · ${top.dexId} pool`, detail: "spot pool price, deepest apyUSD/apxUSD pool" };
+  return { price: Number(top.priceNative), source: `DexScreener · ${top.dexId} pool`, size: "Spot (no size)", detail: "Spot price of the deepest apyUSD/apxUSD pool" };
 }
 
 async function fetchDexPrice() {
@@ -384,7 +384,7 @@ async function fetchDexPrice() {
     const quote = await fetchQuote(ethers.parseUnits(String(DISCOUNT_REF_APX), TOKENS.apxUSD.decimals), TOKENS.apyUSD);
     const out = numberFromWei(quote.amountOutWei, TOKENS.apyUSD.decimals);
     if (!(out > 0)) throw new Error("empty quote");
-    return { price: DISCOUNT_REF_APX / out, source: "KyberSwap quote", detail: `${DISCOUNT_REF_APX.toLocaleString("en-US")} apxUSD → apyUSD, incl. price impact` };
+    return { price: DISCOUNT_REF_APX / out, source: "KyberSwap quote", size: `${DISCOUNT_REF_APX.toLocaleString("en-US")} apxUSD → apyUSD`, detail: "Includes price impact" };
   } catch {
     return fetchDexScreenerPrice();
   }
@@ -395,7 +395,13 @@ function renderDiscount() {
   const d = lastDiscount;
   els.discount.textContent = formatPercent(d.discount * 100);
   setSigned(els.discount, d.discount);
-  els.discountDetail.textContent = `DEX ${formatAmount(d.price, 5)} vs gross redemption ${formatAmount(d.gross, 5)} apxUSD per apyUSD · ${d.detail}`;
+  els.discountDetail.textContent = "";
+  els.discountDetail.hidden = true;
+  document.querySelector("#discountRows").hidden = false;
+  document.querySelector("#dPrice").textContent = formatAmount(d.price, 5);
+  document.querySelector("#dGross").textContent = formatAmount(d.gross, 5);
+  document.querySelector("#dSize").textContent = d.size;
+  document.querySelector("#dNote").textContent = d.detail;
   els.discountSource.textContent = d.source;
   els.discountUpdated.textContent = new Date(d.time).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
@@ -414,6 +420,7 @@ async function refreshDiscount() {
     })
     .catch(() => {
       els.discountHero.classList.add("error");
+      els.discountDetail.hidden = false;
       els.discountDetail.textContent = lastDiscount
         ? "Refresh failed (KyberSwap, DexScreener or RPC unreachable); showing last value. Retrying…"
         : "Couldn't load the live DEX price (KyberSwap, DexScreener or RPC unreachable). Retrying…";

@@ -41,6 +41,12 @@
             <span class="discount-label">Current discount</span>
             <strong id="discountMetric">--</strong>
             <em id="discountDetail">Loading live DEX price…</em>
+            <dl class="discount-rows" id="discountRows" hidden>
+              <div><dt>DEX price</dt><dd><span id="dPrice">--</span> <small>apxUSD per apyUSD</small></dd></div>
+              <div><dt>Gross redemption value</dt><dd><span id="dGross">--</span> <small>apxUSD per apyUSD</small></dd></div>
+              <div><dt>Quote size</dt><dd id="dSize">--</dd></div>
+              <div><dt>Note</dt><dd id="dNote">--</dd></div>
+            </dl>
           </div>
           <div class="discount-meta">
             <span>Source <strong id="discountSource">--</strong></span>
@@ -123,6 +129,22 @@
             <span>Redeem time</span>
             <strong id="redeemTimeMetric">20 days</strong>
             <small id="redeemFeeNote">0.1% vault fee + 0% claim fee</small>
+          </div>
+        </div>
+
+        <div class="advice" id="advice" aria-live="polite">
+          <div class="advice-card">
+            <span id="adviceLabel">At a --% discount</span>
+            <strong id="adviceDays">--</strong>
+            <em>Optimal claim time</em>
+          </div>
+          <div class="advice-text">
+            <p class="advice-move" id="adviceMove">Waiting for the live DEX discount…</p>
+            <dl class="advice-stats">
+              <div><dt>APY equivalent</dt><dd id="adviceApy">--</dd></div>
+              <div><dt>Trade return</dt><dd id="adviceRet">--</dd></div>
+            </dl>
+            <small id="adviceNote">Uses the live discount above and the on-chain claim fee curve.</small>
           </div>
         </div>
 

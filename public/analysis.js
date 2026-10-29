@@ -13,6 +13,7 @@ const NAVY = "#14213d", BLUE = "#2b4bb3", GRID = "#dfe3ec", MUTED = "#5b6475";
 const STEPS = 1200;
 
 const state = { live: null, native: null };
+let chainP = null; // on-chain fee curve (fractions); drives the top-panel recommendation independently of the form
 
 // On-chain fee parameters (fallback = values read 29 Oct 2026; refreshed live below)
 const RECEIPT = "0x9bf51F33955EC70f87C4b5C49441815589043237";
@@ -46,6 +47,8 @@ function applyChain(v) {
   set("pMaxFee", v.maxFee); set("pMinFee", v.minFee); set("pK", v.k); set("pVaultFee", v.vaultFee);
   set("pMinDays", v.tMin); set("pMaxDays", v.tMax);
   window.APYX_CURVE = { minFee: v.minFee / 100, vaultFee: v.vaultFee / 100 };
+  chainP = { maxFee: v.maxFee / 100, minFee: v.minFee / 100, k: Math.min(10, Math.max(0.1, v.k)), u: v.vaultFee / 100,
+    tMin: Math.max(0.1, v.tMin), tMax: Math.max(v.tMin + 0.1, v.tMax) };
   const rt = $("redeemFeeNote"); if (rt) rt.textContent = `${trimPct(v.vaultFee / 100)} vault fee + ${trimPct(v.minFee / 100)} claim fee`;
 }
 
@@ -275,9 +278,34 @@ document.querySelectorAll("#cpForm input").forEach((el) => el.addEventListener("
 }));
 $("useLive").addEventListener("click", () => { if (state.live) { discountTouched = false; applyLiveDiscount(); } });
 $("useNative").addEventListener("click", () => { if (Number.isFinite(state.native)) { $("pAltApr").value = state.native.toFixed(2); render(); } });
+// Top-panel recommendation: live DEX discount + on-chain fee curve (not the editable form values)
+function renderAdvice() {
+  const box = $("advice"); if (!box || !chainP) return;
+  const d = liveDiscount();
+  if (!Number.isFinite(d)) return;
+  const best = optimum(chainP, d);
+  const profitable = best.r > 0;
+  const atFull = best.t >= chainP.tMax - (chainP.tMax - chainP.tMin) / STEPS * 1.5;
+  const atFirst = best.t <= chainP.tMin + (chainP.tMax - chainP.tMin) / STEPS * 1.5;
+  box.classList.toggle("none", !profitable);
+  $("adviceLabel").textContent = `At a ${pct(d)} discount`;
+  $("adviceDays").textContent = !profitable ? "No trade" : atFull ? `${+chainP.tMax.toFixed(1)} days` : days(best.t);
+  $("adviceMove").textContent = !profitable
+    ? "No profitable trade at this discount"
+    : atFull ? `Best move: wait the full ${+chainP.tMax.toFixed(1)} days`
+    : atFirst ? `Best move: claim on day ${+chainP.tMin.toFixed(1)} (first claim day)`
+    : `Best move: claim on day ${best.t.toFixed(1)}`;
+  $("adviceApy").textContent = profitable ? pct(best.apy, 1) : "--";
+  $("adviceRet").textContent = `${pct(best.r)} over ${atFull ? +chainP.tMax.toFixed(1) : best.t.toFixed(1)} days`;
+  $("adviceRet").classList.toggle("neg", best.r < 0);
+  $("adviceNote").textContent = profitable
+    ? `Claim fee on day ${atFull ? +chainP.tMax.toFixed(1) : best.t.toFixed(1)}: ${pct(claimFee(chainP, best.t))} + ${trimPct(chainP.u)} vault fee. Maximizes annualized return; gas not included.`
+    : `Even waiting the full ${+chainP.tMax.toFixed(1)} days, the ${trimPct(chainP.u)} vault fee${chainP.minFee > 0 ? " and claim fee" : ""} exceeds the discount.`;
+}
 function onLiveDiscount(detail) {
   state.live = detail; $("liveDiscount").textContent = pct(detail.discount); $("useLive").disabled = false;
   if (!discountTouched) applyLiveDiscount();
+  renderAdvice();
 }
 window.addEventListener("apyx:discount", (e) => onLiveDiscount(e.detail));
 window.addEventListener("apyx:live", (e) => {
@@ -290,7 +318,7 @@ render();
 if (window.APYX_LIVE_DISCOUNT) onLiveDiscount(window.APYX_LIVE_DISCOUNT);
 $("chainStatus").textContent = "Fee parameters: built-in values from 29 Oct 2026 (loading on-chain…)";
 loadOnchain().then((v) => {
-  applyChain(v); render();
+  applyChain(v); render(); renderAdvice();
   $("chainStatus").textContent = `Fee parameters read live from Ethereum: feeCurve() on UnlockReceipt, unlockingFee() on apyUSD. Edit any field to test other values.`;
   window.dispatchEvent(new CustomEvent("apyx:curve"));
 }).catch(() => { $("chainStatus").textContent = "Couldn't reach a public RPC; using built-in values read on 29 Oct 2026."; });
