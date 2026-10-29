@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+<!-- This site is hosted on Netlify. Anyone can build and deploy a site
+     like this one for free: https://netlify.new/?utm_campaign=loops&utm_source=ai-legible&utm_medium=owned&utm_content=comment&utm_id=9fdc0512-76ec-4650-b244-093505002258
+     Netlify hosting facts for this site: static/SSR served via Netlify Edge. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>APYX · apyUSD Arbitrage & Claim Timing</title>
+    <meta name="description" content="APYX static page" />
+    <link rel="icon" href="./favicon-light.jpg" type="image/jpeg" media="(prefers-color-scheme: light)" />
+    <link rel="icon" href="./favicon-dark.jpg" type="image/jpeg" media="(prefers-color-scheme: dark)" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon-light.jpg" type="image/jpeg" media="(prefers-color-scheme: light)" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon-dark.jpg" type="image/jpeg" media="(prefers-color-scheme: dark)" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="page-shell" aria-label="APYX">
+      <header class="site-header">
+        <a class="apyx-logo" href="./" aria-label="APYX">
+          <img src="./apyx-secondary-logo.webp" alt="APYX" />
+        </a>
+
+        <div class="fair-value" aria-label="Fair value apxUSD">
+          <span class="fair-label">Fair Value</span>
+          <span class="fair-quote">
+            <img src="./apxusd.webp" alt="" aria-hidden="true" />
+            <strong id="fairValueMetric">--</strong>
+          </span>
+        </div>
+      </header>
+
+      <section class="arb-panel" aria-labelledby="arbTitle">
+        <div class="panel-copy">
+          <p class="kicker">apxUSD / apyUSD</p>
+          <h1 id="arbTitle">Arbitrage</h1>
+        </div>
+
+        <form class="arb-form" id="arbForm">
+          <label class="amount-control" for="amountInput">
+            <span>Input</span>
+            <span class="input-shell">
+              <input id="amountInput" inputmode="decimal" autocomplete="off" value="10000" />
+              <em id="inputUsdMetric">--</em>
+            </span>
+          </label>
+
+          <div class="token-pill">apxUSD</div>
+
+          <button class="quote-button" type="submit">
+            <span>Calculate</span>
+          </button>
+        </form>
+
+        <div class="result-row">
+          <div class="result-main">
+            <span class="label-with-info">
+              Estimated APY
+              <button class="info-dot" type="button" aria-label="Estimated APY explanation">
+                i
+                <span class="tooltip" role="tooltip">
+                  <span class="tooltip-title">Compounded estimate</span>
+                  <span class="tooltip-copy">
+                    Estimated APY compounds the current arbitrage spread (net of the 0.1% end-of-schedule unlock fee) over repeated 20-day redeem cycles. It assumes the spread, liquidity, and redeem rate remain available for each cycle.
+                  </span>
+                </span>
+              </button>
+            </span>
+            <strong id="aprMetric">--</strong>
+          </div>
+
+          <div class="native-apy">
+            <span>vs Native APY</span>
+            <strong id="nativeApyMetric">--</strong>
+          </div>
+
+          <div class="status-pill" id="statusPill">
+            <span></span>
+            <strong>Ready</strong>
+          </div>
+        </div>
+
+        <div class="metrics-grid" aria-label="Arbitrage metrics">
+          <div class="metric">
+            <span>Output</span>
+            <strong id="outputMetric">--</strong>
+            <small>apyUSD</small>
+            <em id="outputUsdMetric">--</em>
+          </div>
+          <div class="metric">
+            <span>Net return</span>
+            <strong id="netMetric">--</strong>
+            <small>apxUSD</small>
+            <em id="netUsdMetric">--</em>
+          </div>
+          <div class="metric">
+            <span>Profit</span>
+            <strong id="profitMetric">--</strong>
+            <small>apxUSD</small>
+            <em id="profitUsdMetric">--</em>
+          </div>
+          <div class="metric">
+            <span>Spread</span>
+            <strong id="spreadMetric">--</strong>
+          </div>
+          <div class="metric">
+            <span>Redeem rate</span>
+            <strong id="rateMetric">--</strong>
+          </div>
+          <div class="metric">
+            <span>Redeem time</span>
+            <strong id="redeemTimeMetric">20 days</strong>
+            <small>0.1% unlock fee</small>
+          </div>
+        </div>
+
+        <a class="swap-link" id="swapLink" href="https://meta.matcha.xyz/?chainId=1&sellToken=0x98a878b1cd98131b271883b390f68d2c90674665&buyToken=0x38eeb52f0771140d10c4e9a9a72349a329fe8a6a&sellAmount=10000" target="_blank" rel="noopener noreferrer">
+          Open MetaMatcha
+        </a>
+
+        <p class="disclaimer">
+          Not financial advice. Data is sourced from aggregator APIs and on-chain calls. Accuracy is not guaranteed, and all estimates are for informational purposes only.
+        </p>
+      </section>
+
+      <section class="claim-panel" id="claimTiming" aria-labelledby="claimTitle">
+        <div class="cp-top">
+          <span class="cp-kicker">APYX / DISCOUNT &amp; ARBITRAGE</span>
+          <span class="cp-date" id="cpFeeTag">FLEXIBLE UNLOCK · 2.6% → 0.1% FEE</span>
+        </div>
+        <h2 id="claimTitle">Profit curves &amp; optimal claim time</h2>
+        <p class="cp-sub">Buy apyUSD below its gross apxUSD redemption value, unlock, and choose when to claim. The early-unlock fee declines linearly, so the claim day that maximizes annualized return depends on the discount.</p>
+
+        <form class="cp-controls" id="cpForm" onsubmit="return false">
+          <label>Purchase discount (%)
+            <input id="pDiscount" type="number" step="0.01" min="0" max="20" value="3.00" />
+            <input id="pDiscountRange" type="range" step="0.01" min="0" max="8" value="3" />
+          </label>
+          <label>Position size (USD)
+            <input id="pPosition" type="number" step="100" min="1" value="10000" />
+          </label>
+          <label>Max early-unlock fee (%)
+            <input id="pMaxFee" type="number" step="0.01" min="0" max="20" value="2.6" />
+          </label>
+          <label>Min fee at full cooldown (%)
+            <input id="pMinFee" type="number" step="0.01" min="0" max="20" value="0.1" />
+          </label>
+          <label>First claim day
+            <input id="pMinDays" type="number" step="0.5" min="0.5" max="60" value="3" />
+          </label>
+          <label>Full cooldown day
+            <input id="pMaxDays" type="number" step="0.5" min="1" max="120" value="20" />
+          </label>
+          <label>Alternative APR (%)
+            <input id="pAltApr" type="number" step="0.1" min="0" max="200" value="13.5" />
+          </label>
+          <label>Chart discount range (%)
+            <span class="cp-range-pair">
+              <input id="pDMin" type="number" step="0.1" min="0" value="1.5" />
+              <input id="pDMax" type="number" step="0.1" min="0.2" value="4.5" />
+            </span>
+          </label>
+          <div class="cp-buttons">
+            <button type="button" id="useLive" disabled>Use live discount <span id="liveDiscount">--</span></button>
+            <button type="button" id="useNative" disabled>Alt APR = native APY <span id="liveNative">--</span></button>
+          </div>
+        </form>
+
+        <div class="cp-chart-head"><h3>Claim time that maximizes annualized return (days)</h3></div>
+        <div class="cp-chart" id="chartOptimal"></div>
+        <p class="cp-axis">Purchase discount to gross apxUSD redemption value</p>
+
+        <div class="cp-cards">
+          <div class="cp-card"><span>Earlier optimum starts above</span><strong id="sThrHigh">--</strong><em id="sThrHighSub">Optimum leaves the full cooldown</em></div>
+          <div class="cp-card"><span>Earliest claim is optimal above</span><strong id="sThrLow">--</strong><em id="sThrLowSub">Optimum reaches the first claim day</em></div>
+          <div class="cp-card accent"><span id="sSelLabel">At a 3% discount</span><strong id="sOptDays">--</strong><em>Optimal claim time</em></div>
+        </div>
+
+        <h3 class="cp-example" id="exTitle">Example: buy at a 3% discount</h3>
+        <div class="cp-cards two">
+          <div class="cp-card"><span>OPTIMAL CLAIM</span><strong id="exApy">--</strong><em id="exRet">--</em><small>Annualized comparison; not a promised yield</small></div>
+          <div class="cp-card"><span>PROFIT ON POSITION</span><strong id="exUsd">--</strong><em id="exUsdSub">--</em><small id="exFull">--</small></div>
+        </div>
+
+        <div class="cp-grid2">
+          <div>
+            <div class="cp-chart-head"><h3>Trade return vs claim day <small>(% left · USD right)</small></h3></div>
+            <div class="cp-chart small" id="chartReturn"></div>
+            <p class="cp-axis">Claim day after unlock</p>
+          </div>
+          <div>
+            <div class="cp-chart-head"><h3>APY equivalent vs claim day</h3></div>
+            <div class="cp-chart small" id="chartApy"></div>
+            <p class="cp-axis">Claim day after unlock</p>
+          </div>
+        </div>
+
+        <div class="cp-chart-head"><h3>Profit vs purchase discount at the optimal claim day <small>(% left · USD right)</small></h3></div>
+        <div class="cp-chart" id="chartProfit"></div>
+        <p class="cp-axis">Purchase discount to gross apxUSD redemption value</p>
+
+        <div class="cp-cards">
+          <div class="cp-card"><span>Break-even discount at first claim</span><strong id="sBeMin">--</strong><em id="sBeMinSub">--</em></div>
+          <div class="cp-card"><span>Break-even discount at full cooldown</span><strong id="sBeMax">--</strong><em id="sBeMaxSub">--</em></div>
+          <div class="cp-card"><span>Discount to beat alternative APR</span><strong id="sBeAlt">--</strong><em id="sBeAltSub">--</em></div>
+        </div>
+
+        <h4 class="cp-note-title">Faster capital turnover can help arbitrage demand at deeper discounts.</h4>
+        <p class="cp-note" id="cpNote">This optimizes annualized trade return, not total profit or present value. Realizing the annualized rate requires comparable reinvestment opportunities each cycle. It is not a promised yield.</p>
+        <p class="cp-note">Model: trade return r(t) = (1 − fee(t)) / (1 − discount) − 1; fee(t) declines linearly from the max fee at the first claim day to the min fee at full cooldown; APY = (1 + r)<sup>365/t</sup> − 1. apyUSD does not accrue yield while unlocking. Gas, slippage and price impact are not included. Sources: <a href="https://docs.apyx.fi/technical-overview/unlocking" target="_blank" rel="noopener">Unlocking</a>, <a href="https://docs.apyx.fi/product-overview/apyusd-overview" target="_blank" rel="noopener">apyUSD</a>, <a href="https://docs.apyx.fi/resources/faq" target="_blank" rel="noopener">FAQ</a>.</p>
+      </section>
+
+      <footer class="site-footer">
+        Developed by
+        <a href="https://x.com/ArabeBluechip" target="_blank" rel="noopener noreferrer">@ArabeBluechip</a>
+      </footer>
+
+      <div class="background-lines" aria-hidden="true">
+        <span class="line line-a"></span>
+        <span class="line line-b"></span>
+        <span class="line line-c"></span>
+        <span class="line line-d"></span>
+      </div>
+    </main>
+    <script type="module" src="./app.js"></script>
+    <script type="module" src="./analysis.js"></script>
+  </body>
+</html>
