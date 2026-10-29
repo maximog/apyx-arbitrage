@@ -1,13 +1,53 @@
 // Claim-timing analysis for apyUSD flexible unlocks.
-// Model (docs.apyx.fi Unlocking + user-supplied current fee):
-//   fee(t) = maxFee − (maxFee − minFee) · (t − tMin) / (tMax − tMin),  tMin ≤ t ≤ tMax
-//   r(t)   = (1 − fee(t)) / (1 − d) − 1          (d = purchase discount to gross apxUSD redemption value)
-//   APY(t) = (1 + r(t))^(365 / t) − 1            (same compounding convention as the base site)
+// Fee model = on-chain contracts (verified source, Ethereum mainnet):
+//   UnlockReceipt 0x9bf51F33955EC70f87C4b5C49441815589043237, FeeCurveLib.fee():
+//     tHat = (elapsed − minDuration) / (maxDuration − minDuration)          (clamped to [0, 1])
+//     c(t) = maxFee − (maxFee − minFee) · tHat^k                           (claim fee on escrowed assets)
+//   ApyUSD vault 0x38EEb52F0771140d10c4E9A9a72349A329Fe8a6A charges unlockingFee u upfront on
+//   unlock: escrow = gross / (1 + u).
+//   Total cost vs gross apxUSD value: cost(t) = 1 − (1 − c(t)) / (1 + u)
+//   r(t)   = (1 − cost(t)) / (1 − d) − 1        (d = purchase discount to gross apxUSD redemption value)
+//   APY(t) = (1 + r(t))^(365 / t) − 1          (same compounding convention as the base site)
 const $ = (id) => document.getElementById(id);
 const NAVY = "#14213d", BLUE = "#2b4bb3", GRID = "#dfe3ec", MUTED = "#5b6475";
 const STEPS = 1200;
 
 const state = { live: null, native: null };
+
+// On-chain fee parameters (fallback = values read 29 Oct 2026; refreshed live below)
+const RECEIPT = "0x9bf51F33955EC70f87C4b5C49441815589043237";
+const VAULT = "0x38EEb52F0771140d10c4E9A9a72349A329Fe8a6A";
+const RPCS = ["https://ethereum-rpc.publicnode.com", "https://1rpc.io/eth"];
+const FALLBACK = { minFee: 0, maxFee: 2.5, tMin: 3, tMax: 20, k: 0.75, vaultFee: 0.1 };
+
+async function ethCall(to, data) {
+  for (const url of RPCS) {
+    try {
+      const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to, data }, "latest"] }) });
+      const j = await res.json();
+      if (j.result && j.result.length > 2) return j.result;
+    } catch {}
+  }
+  throw new Error("eth_call failed");
+}
+const word = (hex, i) => BigInt("0x" + hex.slice(2 + 64 * i, 2 + 64 * (i + 1)));
+const wadPct = (w) => Number(w) / 1e16;
+
+async function loadOnchain() {
+  const [curve, uf] = await Promise.all([ethCall(RECEIPT, "0x856695ea"), ethCall(VAULT, "0xceacd9d9")]); // feeCurve(), unlockingFee()
+  const v = { minFee: wadPct(word(curve, 0)), maxFee: wadPct(word(curve, 1)), tMin: Number(word(curve, 2)) / 86400,
+    tMax: Number(word(curve, 3)) / 86400, k: Number(word(curve, 4)) / 1e18, vaultFee: wadPct(word(uf, 0)) };
+  return v;
+}
+
+function applyChain(v) {
+  const set = (id, x) => { $(id).value = +x.toFixed(6); };
+  set("pMaxFee", v.maxFee); set("pMinFee", v.minFee); set("pK", v.k); set("pVaultFee", v.vaultFee);
+  set("pMinDays", v.tMin); set("pMaxDays", v.tMax);
+  window.APYX_CURVE = { minFee: v.minFee / 100, vaultFee: v.vaultFee / 100 };
+  const rt = $("redeemFeeNote"); if (rt) rt.textContent = `${trimPct(v.vaultFee / 100)} vault fee + ${trimPct(v.minFee / 100)} claim fee`;
+}
 
 function params() {
   const n = (id, fb) => { const v = parseFloat($(id).value); return Number.isFinite(v) ? v : fb; };
@@ -18,14 +58,24 @@ function params() {
   return {
     d: Math.min(0.99, Math.max(0, n("pDiscount", 3) / 100)),
     pos: Math.max(0, n("pPosition", 10000)),
-    maxFee: Math.max(0, n("pMaxFee", 2.6)) / 100,
-    minFee: Math.max(0, n("pMinFee", 0.1)) / 100,
+    maxFee: Math.max(0, n("pMaxFee", 2.5)) / 100,
+    minFee: Math.max(0, n("pMinFee", 0)) / 100,
+    k: Math.min(10, Math.max(0.1, n("pK", 0.75))),
+    u: Math.max(0, n("pVaultFee", 0.1)) / 100,
     tMin, tMax, dMin, dMax,
     alt: Math.max(0, n("pAltApr", 13.5)) / 100,
   };
 }
 
-const fee = (p, t) => p.maxFee - (p.maxFee - p.minFee) * (Math.min(Math.max(t, p.tMin), p.tMax) - p.tMin) / (p.tMax - p.tMin);
+// Receipt claim fee, mirroring FeeCurveLib.fee() (tHat floored to 1e-18 like the contract; powWad ≈ Math.pow)
+function claimFee(p, t) {
+  if (t >= p.tMax) return p.minFee;
+  if (t <= p.tMin) return p.maxFee;
+  const tHat = Math.floor(((t - p.tMin) / (p.tMax - p.tMin)) * 1e18) / 1e18;
+  return p.maxFee - (p.maxFee - p.minFee) * Math.pow(tHat, p.k);
+}
+// Total cost as a share of gross apxUSD value (vault unlockingFee + receipt claim fee)
+const fee = (p, t) => 1 - (1 - claimFee(p, t)) / (1 + p.u);
 const ret = (p, d, t) => (1 - fee(p, t)) / (1 - d) - 1;
 const apy = (r, t) => (r <= -1 ? -1 : Math.pow(1 + r, 365 / t) - 1);
 
@@ -105,7 +155,26 @@ function lineChart(el, o) {
 function render() {
   const p = params();
   const sel = optimum(p, p.d);
-  $("cpFeeTag").textContent = `FLEXIBLE UNLOCK · ${trimPct(p.maxFee)} → ${trimPct(p.minFee)} FEE · DAY ${+p.tMin.toFixed(1)}–${+p.tMax.toFixed(1)}`;
+  $("cpFeeTag").textContent = `FLEXIBLE UNLOCK · TOTAL COST ${pct(fee(p, p.tMin))} → ${pct(fee(p, p.tMax))} · k ${+p.k.toFixed(3)} · DAY ${+p.tMin.toFixed(1)}–${+p.tMax.toFixed(1)}`;
+
+  // 0. Fee curve: total cost vs claim day
+  {
+    const fx = [], fy = [];
+    for (let i = 0; i <= 200; i++) { const t = p.tMin + (p.tMax - p.tMin) * (i / 200); fx.push(t); fy.push(fee(p, t)); }
+    const marks = [...new Set([p.tMin, 5, 10, 15, p.tMax].filter((t) => t >= p.tMin && t <= p.tMax))];
+    const top = Math.max(fee(p, p.tMin), 0.001);
+    lineChart($("chartFee"), {
+      label: "Total unlock cost vs claim day", xs: fx, ys: fy, xDomain: [p.tMin, p.tMax], yDomain: [0, top * 1.25],
+      xTicks: marks, xFmt: (v) => `${+v.toFixed(1)}`, yFmt: (v) => pct(v, 1), height: 280,
+      points: marks.map((t, i) => ({ x: t, y: fee(p, t), label: pct(fee(p, t)), below: i > 0 && i < marks.length - 1 })),
+    });
+    $("sFeeMax").textContent = trimPct(p.maxFee);
+    $("sFeeMaxSub").textContent = `Receipt claim fee on day ${+p.tMin.toFixed(1)}; excludes the ${trimPct(p.u)} vault fee`;
+    $("sFeeK").textContent = `k = ${+p.k.toFixed(3)}`;
+    $("sFeeKSub").textContent = p.k < 1 ? "Concave: declines faster at first" : p.k > 1 ? "Convex: declines slower at first" : "Linear decline";
+    $("sFeeDays").textContent = `${+p.tMin.toFixed(1)} / ${+p.tMax.toFixed(1)} days`;
+    $("sFeeDaysSub").textContent = "First claim / fee floor";
+  }
 
   // 1. Optimal claim time vs discount
   const N = 240, ds = [], ts = [];
@@ -124,7 +193,7 @@ function render() {
   $("sThrHigh").textContent = Number.isFinite(dHigh) ? `${pct(dHigh)} discount` : "none";
   $("sThrHighSub").textContent = `Below it, wait the full ${+p.tMax.toFixed(1)} days`;
   $("sThrLow").textContent = Number.isFinite(dLow) ? `${pct(dLow)} discount` : "none";
-  $("sThrLowSub").textContent = `Above it, claim on day ${+p.tMin.toFixed(1)}`;
+  $("sThrLowSub").textContent = p.k < 1 ? `Above it, claim on day ${+p.tMin.toFixed(1)} (the curve only approaches it, since the fee drops steeply right after day ${+p.tMin.toFixed(1)})` : `Above it, claim on day ${+p.tMin.toFixed(1)}`;
   $("sSelLabel").textContent = `At a ${trimPct(p.d)} discount`;
   $("sOptDays").textContent = days(sel.t);
 
@@ -168,12 +237,12 @@ function render() {
   });
 
   // Break-evens
-  $("sBeMin").textContent = pct(p.maxFee);
-  $("sBeMinSub").textContent = `Claim on day ${+p.tMin.toFixed(1)} pays the ${trimPct(p.maxFee)} max fee`;
-  $("sBeMax").textContent = pct(p.minFee);
-  $("sBeMaxSub").textContent = `Claim on day ${+p.tMax.toFixed(1)} pays the ${trimPct(p.minFee)} min fee`;
+  $("sBeMin").textContent = pct(fee(p, p.tMin));
+  $("sBeMinSub").textContent = `Claim on day ${+p.tMin.toFixed(1)}: ${trimPct(p.maxFee)} claim fee + ${trimPct(p.u)} vault fee`;
+  $("sBeMax").textContent = pct(fee(p, p.tMax));
+  $("sBeMaxSub").textContent = `Claim on day ${+p.tMax.toFixed(1)}: ${trimPct(p.minFee)} claim fee + ${trimPct(p.u)} vault fee`;
   const dAlt = bisect((d) => optimum(p, d).apy >= p.alt);
-  const dAltFull = 1 - (1 - p.minFee) / Math.pow(1 + p.alt, p.tMax / 365);
+  const dAltFull = 1 - (1 - fee(p, p.tMax)) / Math.pow(1 + p.alt, p.tMax / 365);
   $("sBeAlt").textContent = pct(dAlt);
   $("sBeAltSub").textContent = `Best-case APY eq. ≥ ${trimPct(p.alt)} alternative`;
   $("cpNote").textContent = `This optimizes annualized trade return, not total profit or present value at a fixed ${trimPct(p.alt)} APR. Realizing the annualized rate requires comparable reinvestment opportunities after each claim. With only a ${trimPct(p.alt)} APR alternative, waiting the full ${+p.tMax.toFixed(1)} days maximizes total profit; its theoretical break-even discount is ${pct(dAltFull)}. Not a promised yield.`;
@@ -182,16 +251,33 @@ function render() {
 function sync(fromRange) {
   if (fromRange) $("pDiscount").value = (+$("pDiscountRange").value).toFixed(2);
   else $("pDiscountRange").value = $("pDiscount").value;
-  render();
+  applyChain(FALLBACK);
+render();
+$("chainStatus").textContent = "Fee parameters: built-in values from 29 Oct 2026 (loading on-chain…)";
+loadOnchain().then((v) => {
+  applyChain(v); render();
+  if (state.live) $("liveDiscount").textContent = pct(liveDiscount());
+  $("chainStatus").textContent = `Fee parameters read live from Ethereum: feeCurve() on UnlockReceipt, unlockingFee() on apyUSD. Edit any field to test other values.`;
+  window.dispatchEvent(new CustomEvent("apyx:curve"));
+}).catch(() => { $("chainStatus").textContent = "Couldn't reach a public RPC; using built-in values read on 29 Oct 2026."; });
 }
 
 document.querySelectorAll("#cpForm input").forEach((el) => el.addEventListener("input", () => sync(el.id === "pDiscountRange")));
-$("useLive").addEventListener("click", () => { if (state.live) { $("pDiscount").value = (state.live.discount * 100).toFixed(2); sync(false); } });
+const liveDiscount = () => { if (!state.live) return NaN; const gross = state.live.escrow * (1 + params().u); return 1 - state.live.input / gross; };
+$("useLive").addEventListener("click", () => { if (state.live) { $("pDiscount").value = (liveDiscount() * 100).toFixed(2); sync(false); } });
 $("useNative").addEventListener("click", () => { if (Number.isFinite(state.native)) { $("pAltApr").value = state.native.toFixed(2); render(); } });
 window.addEventListener("apyx:live", (e) => {
-  state.live = e.detail; $("liveDiscount").textContent = pct(e.detail.discount); $("useLive").disabled = false;
+  state.live = e.detail; $("liveDiscount").textContent = pct(liveDiscount()); $("useLive").disabled = false;
   if (Number.isFinite(e.detail.nativeApy)) window.dispatchEvent(new CustomEvent("apyx:native", { detail: { nativeApy: e.detail.nativeApy } }));
 });
 window.addEventListener("apyx:native", (e) => { state.native = e.detail.nativeApy; $("liveNative").textContent = `${state.native.toFixed(2)}%`; $("useNative").disabled = false; });
 let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(render, 120); });
+applyChain(FALLBACK);
 render();
+$("chainStatus").textContent = "Fee parameters: built-in values from 29 Oct 2026 (loading on-chain…)";
+loadOnchain().then((v) => {
+  applyChain(v); render();
+  if (state.live) $("liveDiscount").textContent = pct(liveDiscount());
+  $("chainStatus").textContent = `Fee parameters read live from Ethereum: feeCurve() on UnlockReceipt, unlockingFee() on apyUSD. Edit any field to test other values.`;
+  window.dispatchEvent(new CustomEvent("apyx:curve"));
+}).catch(() => { $("chainStatus").textContent = "Couldn't reach a public RPC; using built-in values read on 29 Oct 2026."; });

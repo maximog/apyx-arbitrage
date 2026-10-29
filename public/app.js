@@ -4,7 +4,9 @@ const RPC_URL = "https://ethereum-rpc.publicnode.com/2376b275d18176b907569c0db67
 const KYBER_URL = "https://aggregator-api.kyberswap.com/ethereum/api/v1/routes";
 const QUOTE_TO = "0xd8da6bf26964af9d7eed9e03e53415d37aa96045";
 const REDEEM_DAYS = 20;
-const FULL_COOLDOWN_FEE = 0.001; // 0.1% minimum unlock fee at the end of the linear fee schedule (docs.apyx.fi)
+// The vault's 0.1% unlockingFee is already netted out of previewWithdraw/previewRedeem (the redeem rate).
+// At the end of the schedule the receipt charges feeCurve.minFee (0% on-chain; analysis.js updates it live).
+const claimFeeAtFullCooldown = () => (window.APYX_CURVE ? window.APYX_CURVE.minFee : 0);
 const NATIVE_APY_LOOKBACK_SECONDS = 60 * 60;
 const ETHEREUM_AVERAGE_BLOCK_SECONDS = 12;
 const YEAR_SECONDS = 365 * 24 * 60 * 60;
@@ -299,7 +301,7 @@ async function calculate() {
     const fairValue = fairUsdc / 10000;
     latestFairValue = fairValue;
     const gross = output * redeemRate;
-    const net = gross * (1 - FULL_COOLDOWN_FEE);
+    const net = gross * (1 - claimFeeAtFullCooldown());
     const profit = net - input;
     const spread = (profit / input) * 100;
     const apy = (Math.pow(1 + spread / 100, 365 / REDEEM_DAYS) - 1) * 100;
@@ -323,7 +325,7 @@ async function calculate() {
     setSigned(els.apr, apy);
     setStatus("Live");
     window.dispatchEvent(new CustomEvent("apyx:live", {
-      detail: { input, gross, discount: 1 - input / gross, fairValue, nativeApy: latestNativeApy },
+      detail: { input, escrow: gross, fairValue, nativeApy: latestNativeApy },
     }));
   } catch (error) {
     if (error.name !== "AbortError") {
