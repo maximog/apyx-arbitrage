@@ -170,7 +170,7 @@
             <input id="pDiscount" type="number" step="0.01" min="0" max="20" value="3.00" />
             <input id="pDiscountRange" type="range" step="0.01" min="0" max="15" value="3" />
           </label>
-          <label>Position size (USD) <i class="cp-hint" id="posHint">= top input</i>
+          <label>Position size (apxUSD) <i class="cp-hint" id="posHint">= top input</i>
             <input id="pPosition" type="number" step="100" min="1" value="10000" />
           </label>
           <label>Max claim fee, maxFee (%)
@@ -237,7 +237,7 @@
 
         <div class="cp-grid2">
           <div>
-            <div class="cp-chart-head"><h3>Trade return vs claim day <small>(% left · USD right)</small></h3></div>
+            <div class="cp-chart-head"><h3>Trade return vs claim day <small>(% left · apxUSD right)</small></h3></div>
             <div class="cp-chart small" id="chartReturn"></div>
             <p class="cp-axis">Claim day after unlock</p>
           </div>
@@ -262,19 +262,19 @@
             <input id="pExitDay" type="range" min="3" max="20" step="0.1" value="20" />
             <em id="exitRes">--</em>
           </label>
-          <div class="cp-chart-head"><h3>Profit if you exit on each day <small>(% left · USD right)</small></h3></div>
+          <div class="cp-chart-head"><h3>Profit if you exit on each day <small>(% left · apxUSD right)</small></h3></div>
           <div class="cp-chart" id="chartBreakeven"></div>
           <p class="cp-axis">Exit (claim) day after unlock · <span class="lg lg-g">profit</span> <span class="lg lg-r">loss</span></p>
           <div class="cp-table-wrap">
             <table class="cp-table" id="beTable">
-              <thead><tr><th>Exit day</th><th>Claim fee</th><th>Total cost</th><th>Trade return</th><th>Profit (USD)</th><th>APY eq.</th></tr></thead>
+              <thead><tr><th>Exit day</th><th>Claim fee</th><th>Total cost</th><th>Trade return</th><th>Profit (apxUSD)</th><th>APY eq.</th></tr></thead>
               <tbody id="beRows"></tbody>
             </table>
           </div>
           <p class="cp-note" id="beNote">Indicative only. Excludes gas, slippage and price impact on entry and exit; assumes you buy and start the unlock on day 0.</p>
         </div>
 
-        <div class="cp-chart-head"><h3>Profit vs purchase discount at the optimal claim day <small>(% left · USD right)</small></h3></div>
+        <div class="cp-chart-head"><h3>Profit vs purchase discount at the optimal claim day <small>(% left · apxUSD right)</small></h3></div>
         <div class="cp-chart" id="chartProfit"></div>
         <p class="cp-axis">Purchase discount to gross apxUSD redemption value</p>
 

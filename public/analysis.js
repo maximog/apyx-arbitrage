@@ -102,7 +102,9 @@ function bisect(pred, lo = 0, hi = 0.6) {
 }
 
 const pct = (v, dg = 2) => (Number.isFinite(v) ? `${(v * 100).toFixed(dg)}%` : "--");
-const usd = (v) => (Number.isFinite(v) ? `${v < 0 ? "−" : ""}$${Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "--");
+// All position sizes and profits are in apxUSD (the token you spend), never converted to USD.
+const num = (v) => (Number.isFinite(v) ? `${v < 0 ? "−" : ""}${Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "--");
+const apx = (v) => (Number.isFinite(v) ? `${num(v)} apxUSD` : "--");
 const days = (t) => `${t.toFixed(1)} days`;
 const trimPct = (v) => `${+(v * 100).toFixed(2)}%`;
 
@@ -240,14 +242,14 @@ function render() {
 
   // Example cards
   const full = { t: p.tMax, r: ret(p, p.d, p.tMax) }; full.apy = apy(full.r, full.t);
-  $("exTitle").textContent = `Your trade: ${usd(p.pos)} bought at a ${trimPct(p.d)} discount`;
+  $("exTitle").textContent = `Your trade: ${apx(p.pos)} bought at a ${trimPct(p.d)} discount`;
   $("exApy").textContent = `${pct(sel.apy, 1)} APY equivalent`;
   $("exApy").classList.toggle("neg", sel.r < 0);
   $("exRet").textContent = `${pct(sel.r)} trade return over ${sel.t.toFixed(1)} days · fee ${pct(fee(p, sel.t))}`;
-  $("exUsd").textContent = usd(p.pos * sel.r);
+  $("exUsd").textContent = apx(p.pos * sel.r);
   $("exUsd").classList.toggle("neg", sel.r < 0);
-  $("exUsdSub").textContent = `on ${usd(p.pos)} if claimed on day ${sel.t.toFixed(1)}`;
-  $("exFull").textContent = `Waiting the full ${+p.tMax.toFixed(1)} days: ${usd(p.pos * full.r)} (${pct(full.r)}, ${pct(full.apy, 1)} APY eq.)`;
+  $("exUsdSub").textContent = `on ${apx(p.pos)} if claimed on day ${sel.t.toFixed(1)}`;
+  $("exFull").textContent = `Waiting the full ${+p.tMax.toFixed(1)} days: ${apx(p.pos * full.r)} (${pct(full.r)}, ${pct(full.apy, 1)} APY eq.)`;
 
   // 2/3. Return and APY vs claim day at selected discount
   const tx = [], rr = [], aa = [];
@@ -255,9 +257,9 @@ function render() {
   const dayTicks = niceTicks(p.tMin, p.tMax, 6).filter((t) => t >= p.tMin && t <= p.tMax);
   lineChart($("chartReturn"), {
     label: "Trade return vs claim day", xs: tx, ys: rr, xDomain: [p.tMin, p.tMax], xTicks: dayTicks,
-    xFmt: (v) => `${+v.toFixed(1)}d`, yFmt: (v) => pct(v, 2), rightFmt: (v) => usd(v * p.pos).replace(".00", ""),
+    xFmt: (v) => `${+v.toFixed(1)}d`, yFmt: (v) => pct(v, 2), rightFmt: (v) => num(v * p.pos).replace(".00", ""),
     height: 260, marker: sel.t,
-    points: [{ x: sel.t, y: sel.r, big: true, label: `${pct(sel.r)} · ${usd(p.pos * sel.r)}` }, { x: p.tMax, y: full.r }],
+    points: [{ x: sel.t, y: sel.r, big: true, label: `${pct(sel.r)} · ${apx(p.pos * sel.r)}` }, { x: p.tMax, y: full.r }],
   });
   const aMax = Math.max(...aa), aMin = Math.min(...aa);
   const capLo = Math.max(aMin, -1), padA = (aMax - capLo) * 0.15 || 0.05;
@@ -274,9 +276,9 @@ function render() {
   const pr = ds.map((d) => optimum(p, d).r);
   lineChart($("chartProfit"), {
     label: "Profit vs discount", xs: ds, ys: pr, xDomain: [p.dMin, p.dMax],
-    xFmt: (v) => `${(v * 100).toFixed(1)}%`, yFmt: (v) => pct(v, 1), rightFmt: (v) => usd(v * p.pos).replace(".00", ""),
+    xFmt: (v) => `${(v * 100).toFixed(1)}%`, yFmt: (v) => pct(v, 1), rightFmt: (v) => num(v * p.pos).replace(".00", ""),
     height: 300, marker: p.d,
-    points: [...labelPts.map((q) => ({ x: q.x, y: optimum(p, q.x).r })), { x: p.d, y: sel.r, big: true, label: `${pct(sel.r)} · ${usd(p.pos * sel.r)}` }],
+    points: [...labelPts.map((q) => ({ x: q.x, y: optimum(p, q.x).r })), { x: p.d, y: sel.r, big: true, label: `${pct(sel.r)} · ${apx(p.pos * sel.r)}` }],
   });
 
   // Break-evens
@@ -305,12 +307,12 @@ function renderBreakeven(p, sel, tx, rr) {
   const rEx = ret(p, p.d, ex);
   const signCls = (v) => (v < 0 ? "neg" : "pos");
   const setCard = (id, r, t) => {
-    $(id).textContent = usd(p.pos * r); $(id).classList.toggle("neg", r < 0); $(id).classList.toggle("pos", r >= 0);
+    $(id).textContent = apx(p.pos * r); $(id).classList.toggle("neg", r < 0); $(id).classList.toggle("pos", r >= 0);
     $(id + "Sub").textContent = `${pct(r)} return · ${pct(apy(r, t), 1)} APY eq. · cost ${pct(fee(p, t))}`;
   };
-  $("beTitle").textContent = `Early exit & breakeven: ${usd(p.pos)} at a ${trimPct(p.d)} discount`;
+  $("beTitle").textContent = `Early exit & breakeven: ${apx(p.pos)} at a ${trimPct(p.d)} discount`;
   $("beIntro").textContent = `Need the liquidity before day ${T1}? You can claim any day from day ${T0}, paying that day's claim fee (on-chain curve, ${trimPct(p.maxFee)} → ${trimPct(p.minFee)}) plus the ${trimPct(p.u)} vault fee. Before day ${T0} the unlock cannot be claimed.`;
-  if (r0 >= 0) { $("beDay").textContent = `Day ${T0}`; $("beDaySub").textContent = `Profitable from the first claim day: any exit from day ${T0} on is ≥ $0`; }
+  if (r0 >= 0) { $("beDay").textContent = `Day ${T0}`; $("beDaySub").textContent = `Profitable from the first claim day: any exit from day ${T0} on is ≥ 0`; }
   else if (!Number.isFinite(be)) { $("beDay").textContent = "Never"; $("beDaySub").textContent = `Loss even on day ${T1}: the ${pct(fee(p, p.tMax))} minimum cost exceeds the ${trimPct(p.d)} discount`; }
   else { $("beDay").textContent = `Day ${be.toFixed(1)}`; $("beDaySub").textContent = `≈ ${hoursLbl(be)} after unlock; loss if you exit earlier, profit from then on`; }
   $("beDay").classList.toggle("neg", !Number.isFinite(be));
@@ -318,14 +320,14 @@ function renderBreakeven(p, sel, tx, rr) {
   $("beOptLabel").textContent = sel.r >= 0 ? `Exit on the optimal day (${sel.t.toFixed(1)})` : `Least-bad day (${sel.t.toFixed(1)}), still a loss`; setCard("beOpt", sel.r, sel.t);
   $("beFullLabel").textContent = `Wait the full cooldown (day ${T1})`; setCard("beFull", r1, p.tMax);
   $("exitOut").textContent = `day ${ex.toFixed(1)}`;
-  $("exitRes").innerHTML = `Exit on day ${ex.toFixed(1)}: <span class="${signCls(rEx)}">${usd(p.pos * rEx)}</span> (${pct(rEx)} return, ${pct(apy(rEx, ex), 1)} APY eq.) · claim fee ${pct(claimFee(p, ex))} + ${trimPct(p.u)} vault fee`;
+  $("exitRes").innerHTML = `Exit on day ${ex.toFixed(1)}: <span class="${signCls(rEx)}">${apx(p.pos * rEx)}</span> (${pct(rEx)} return, ${pct(apy(rEx, ex), 1)} APY eq.) · claim fee ${pct(claimFee(p, ex))} + ${trimPct(p.u)} vault fee`;
 
   const dayTicks = niceTicks(p.tMin, p.tMax, 6).filter((t) => t >= p.tMin && t <= p.tMax);
   const intDays = []; for (let t = Math.ceil(p.tMin); t <= Math.floor(p.tMax); t++) intDays.push(t);
   const beLbl = Number.isFinite(be) ? (r0 >= 0 ? `Profitable from day ${T0}` : `Breakeven day ${be.toFixed(1)}`) : `No breakeven by day ${T1}`;
   lineChart($("chartBreakeven"), {
     label: "Profit if exiting on each day", xs: tx, ys: rr, xDomain: [p.tMin, p.tMax], xTicks: dayTicks, includeZero: true, fillZero: true,
-    xFmt: (v) => `${+v.toFixed(1)}d`, yFmt: (v) => pct(v, 2), rightFmt: (v) => usd(v * p.pos).replace(".00", ""), height: 320,
+    xFmt: (v) => `${+v.toFixed(1)}d`, yFmt: (v) => pct(v, 2), rightFmt: (v) => num(v * p.pos).replace(".00", ""), height: 320,
     vmarks: [
       ...(Number.isFinite(be) && r0 < 0 ? [{ x: be, label: beLbl, color: "#1d7a46" }] : []),
       ...(Math.abs(ex - sel.t) > 0.05 ? [{ x: ex, label: `Your exit: day ${ex.toFixed(1)}`, color: BLUE, row: 1 }] : []),
@@ -333,7 +335,7 @@ function renderBreakeven(p, sel, tx, rr) {
     points: [
       ...intDays.map((t) => ({ x: t, y: ret(p, p.d, t) })),
       ...(Number.isFinite(be) && r0 < 0 ? [{ x: be, y: 0 }] : []),
-      { x: sel.t, y: sel.r, big: true, label: `${sel.r >= 0 ? "Optimal" : "Best"} ${sel.t.toFixed(1)}d · ${usd(p.pos * sel.r)}`, below: true },
+      { x: sel.t, y: sel.r, big: true, label: `${sel.r >= 0 ? "Optimal" : "Best"} ${sel.t.toFixed(1)}d · ${apx(p.pos * sel.r)}`, below: true },
     ],
   });
 
@@ -343,12 +345,12 @@ function renderBreakeven(p, sel, tx, rr) {
   const optRow = near(sel.t), exRow = near(ex), beRow = Number.isFinite(be) ? rows.find((t) => t >= be - 1e-9) : NaN;
   $("beRows").innerHTML = rows.map((t) => {
     const r = ret(p, p.d, t), tags = [];
-    if (t === beRow) tags.push(`<span class="tag be">${r0 >= 0 ? "profit from here" : "first ≥ $0"}</span>`);
+    if (t === beRow) tags.push(`<span class="tag be">${r0 >= 0 ? "profit from here" : "first ≥ 0"}</span>`);
     if (t === optRow) tags.push(`<span class="tag">${sel.r >= 0 ? "optimal" : "best"}</span>`);
     if (t === exRow && exitTouched) tags.push(`<span class="tag sel">your exit</span>`);
     const name = t === p.tMin ? `Day ${dayLbl(t)} · first claim` : t === p.tMax ? `Day ${dayLbl(t)} · fee floor` : `Day ${dayLbl(t)}`;
     const cls = [r < 0 ? "loss" : "gain", t === optRow ? "opt" : "", t === exRow && exitTouched ? "sel" : ""].join(" ");
-    return `<tr class="${cls}"><td>${name}${tags.join("")}</td><td>${pct(claimFee(p, t))}</td><td>${pct(fee(p, t))}</td><td class="v">${pct(r)}</td><td class="v">${usd(p.pos * r)}</td><td class="v">${pct(apy(r, t), 1)}</td></tr>`;
+    return `<tr class="${cls}"><td>${name}${tags.join("")}</td><td>${pct(claimFee(p, t))}</td><td>${pct(fee(p, t))}</td><td class="v">${pct(r)}</td><td class="v">${num(p.pos * r)}</td><td class="v">${pct(apy(r, t), 1)}</td></tr>`;
   }).join("");
   $("beNote").textContent = `Indicative only, not a promised result. Profit = position × trade return, where trade return = (1 − cost on the exit day) / (1 − ${trimPct(p.d)}) − 1, the same formula as the rest of this section. Excludes gas, slippage and price impact on entry and exit, and assumes you buy and start the unlock on day 0.${Number.isFinite(be) && r0 < 0 ? ` Breakeven is shown to 0.1 day (≈ 2.4 h).` : ""}`;
 }
@@ -386,20 +388,19 @@ document.querySelectorAll("#cpForm input").forEach((el) => el.addEventListener("
 }));
 $("pExitDay").addEventListener("input", () => { exitTouched = true; render(); });
 $("autoRange").addEventListener("click", () => { rangeTouched = false; render(); });
-// Position size follows the top panel's input amount (apxUSD × fair value) until edited here
-let topFair = NaN;
+// Position size (apxUSD) mirrors the top panel's apxUSD input amount until edited here
 function topPosition() {
   const amt = Number(String($("amountInput").value || "").replace(/,/g, ""));
-  return Number.isFinite(amt) && amt > 0 ? amt * (Number.isFinite(topFair) && topFair > 0 ? topFair : 1) : NaN;
+  return Number.isFinite(amt) && amt > 0 ? amt : NaN;
 }
 function applyTopPosition(force) {
   const v = topPosition();
-  $("topPos").textContent = Number.isFinite(v) ? usd(v).replace(".00", "") : "--";
-  if ((force || !posTouched) && Number.isFinite(v)) { $("pPosition").value = v.toFixed(2); render(); }
+  $("topPos").textContent = Number.isFinite(v) ? apx(v).replace(".00", "") : "--";
+  if ((force || !posTouched) && Number.isFinite(v)) { $("pPosition").value = String(+v.toFixed(6)); render(); }
 }
 for (const ev of ["input", "change", "keyup"]) $("amountInput").addEventListener(ev, () => applyTopPosition(false));
 $("usePos").addEventListener("click", () => { posTouched = false; applyTopPosition(true); });
-window.addEventListener("apyx:live", (e) => { if (Number.isFinite(e.detail.fairValue)) topFair = e.detail.fairValue; applyTopPosition(false); });
+window.addEventListener("apyx:live", () => applyTopPosition(false));
 $("useLive").addEventListener("click", () => { if (state.live) { discountTouched = false; applyLiveDiscount(); } });
 $("useNative").addEventListener("click", () => { if (Number.isFinite(state.native)) { $("pAltApr").value = state.native.toFixed(2); render(); } });
 // Top-panel recommendation: live DEX discount + on-chain fee curve (not the editable form values)
