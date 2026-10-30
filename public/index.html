@@ -163,14 +163,14 @@
           <span class="cp-date" id="cpFeeTag">FLEXIBLE UNLOCK</span>
         </div>
         <h2 id="claimTitle">Profit curves &amp; optimal claim time</h2>
-        <p class="cp-sub">Buy apyUSD below its gross apxUSD redemption value, unlock, and choose when to claim. The claim fee follows the on-chain curve (decays as tHat<sup>k</sup>, k = 0.75), so the claim day that maximizes annualized return depends on the discount.</p>
+        <p class="cp-sub">Buy apyUSD below its gross apxUSD redemption value, unlock, and choose when to claim. The claim fee follows the on-chain curve (decays as tHat<sup>k</sup>, k = <span id="cpK">0.75</span>), so the claim day that maximizes annualized return depends on the discount.</p>
 
         <form class="cp-controls" id="cpForm" onsubmit="return false">
           <label>Purchase discount (%)
             <input id="pDiscount" type="number" step="0.01" min="0" max="20" value="3.00" />
-            <input id="pDiscountRange" type="range" step="0.01" min="0" max="8" value="3" />
+            <input id="pDiscountRange" type="range" step="0.01" min="0" max="15" value="3" />
           </label>
-          <label>Position size (USD)
+          <label>Position size (USD) <i class="cp-hint" id="posHint">= top input</i>
             <input id="pPosition" type="number" step="100" min="1" value="10000" />
           </label>
           <label>Max claim fee, maxFee (%)
@@ -194,7 +194,7 @@
           <label>Alternative APR (%)
             <input id="pAltApr" type="number" step="0.1" min="0" max="200" value="13.5" />
           </label>
-          <label>Chart discount range (%)
+          <label>Chart discount range (%) <i class="cp-hint" id="rangeHint">auto</i>
             <span class="cp-range-pair">
               <input id="pDMin" type="number" step="0.1" min="0" value="1.5" />
               <input id="pDMax" type="number" step="0.1" min="0.2" value="4.5" />
@@ -203,6 +203,8 @@
           <div class="cp-buttons">
             <button type="button" id="useLive" disabled>Use live discount <span id="liveDiscount">--</span></button>
             <button type="button" id="useNative" disabled>Alt APR = native APY <span id="liveNative">--</span></button>
+            <button type="button" id="usePos">Position = top input <span id="topPos">--</span></button>
+            <button type="button" id="autoRange">Auto chart range</button>
           </div>
         </form>
 
@@ -210,7 +212,7 @@
 
         <div class="cp-chart-head"><h3>Total cost of exiting <small>(% of gross apxUSD value)</small></h3></div>
         <div class="cp-chart" id="chartFee"></div>
-        <p class="cp-axis">Days since unlock started · claims open on day 3</p>
+        <p class="cp-axis" id="feeAxis">Days since unlock started</p>
         <div class="cp-cards">
           <div class="cp-card"><span>Maximum claim fee</span><strong id="sFeeMax">--</strong><em id="sFeeMaxSub">--</em></div>
           <div class="cp-card accent"><span>Shape of the curve</span><strong id="sFeeK">--</strong><em id="sFeeKSub">--</em></div>
@@ -227,7 +229,7 @@
           <div class="cp-card accent"><span id="sSelLabel">At a 3% discount</span><strong id="sOptDays">--</strong><em>Optimal claim time</em></div>
         </div>
 
-        <h3 class="cp-example" id="exTitle">Example: buy at a 3% discount</h3>
+        <h3 class="cp-example" id="exTitle">Your trade</h3>
         <div class="cp-cards two">
           <div class="cp-card"><span>OPTIMAL CLAIM</span><strong id="exApy">--</strong><em id="exRet">--</em><small>Annualized comparison; not a promised yield</small></div>
           <div class="cp-card"><span>PROFIT ON POSITION</span><strong id="exUsd">--</strong><em id="exUsdSub">--</em><small id="exFull">--</small></div>
@@ -244,6 +246,32 @@
             <div class="cp-chart small" id="chartApy"></div>
             <p class="cp-axis">Claim day after unlock</p>
           </div>
+        </div>
+
+        <div class="cp-be" id="beBlock">
+          <h3 class="cp-example" id="beTitle">Early exit &amp; breakeven</h3>
+          <p class="cp-be-sub" id="beIntro">If you need the liquidity before the fee floor, you can claim on any day from the first claim day, paying that day's claim fee plus the vault fee.</p>
+          <div class="cp-cards four">
+            <div class="cp-card accent"><span>Breakeven day</span><strong id="beDay">--</strong><em id="beDaySub">--</em></div>
+            <div class="cp-card"><span id="beFirstLabel">Exit at the earliest (day 3)</span><strong id="beFirst">--</strong><em id="beFirstSub">--</em></div>
+            <div class="cp-card"><span id="beOptLabel">Exit on the optimal day</span><strong id="beOpt">--</strong><em id="beOptSub">--</em></div>
+            <div class="cp-card"><span id="beFullLabel">Wait the full cooldown (day 20)</span><strong id="beFull">--</strong><em id="beFullSub">--</em></div>
+          </div>
+          <label class="cp-exit">
+            <span>Exit day <output id="exitOut">--</output></span>
+            <input id="pExitDay" type="range" min="3" max="20" step="0.1" value="20" />
+            <em id="exitRes">--</em>
+          </label>
+          <div class="cp-chart-head"><h3>Profit if you exit on each day <small>(% left · USD right)</small></h3></div>
+          <div class="cp-chart" id="chartBreakeven"></div>
+          <p class="cp-axis">Exit (claim) day after unlock · <span class="lg lg-g">profit</span> <span class="lg lg-r">loss</span></p>
+          <div class="cp-table-wrap">
+            <table class="cp-table" id="beTable">
+              <thead><tr><th>Exit day</th><th>Claim fee</th><th>Total cost</th><th>Trade return</th><th>Profit (USD)</th><th>APY eq.</th></tr></thead>
+              <tbody id="beRows"></tbody>
+            </table>
+          </div>
+          <p class="cp-note" id="beNote">Indicative only. Excludes gas, slippage and price impact on entry and exit; assumes you buy and start the unlock on day 0.</p>
         </div>
 
         <div class="cp-chart-head"><h3>Profit vs purchase discount at the optimal claim day <small>(% left · USD right)</small></h3></div>
