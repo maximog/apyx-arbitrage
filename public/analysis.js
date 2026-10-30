@@ -59,7 +59,7 @@ function params() {
   let dMin = Math.max(0, n("pDMin", 1.5)) / 100;
   let dMax = Math.max(dMin + 0.001, n("pDMax", 4.5) / 100);
   return {
-    d: Math.min(0.99, Math.max(0, n("pDiscount", 3) / 100)),
+    d: Math.min(0.99, Math.max(0, liveFollow() ? liveClamped() : n("pDiscount", 3) / 100)),
     pos: Math.max(0, n("pPosition", 10000)),
     maxFee: Math.max(0, n("pMaxFee", 2.5)) / 100,
     minFee: Math.max(0, n("pMinFee", 0)) / 100,
@@ -363,6 +363,9 @@ function sync(fromRange) {
 // It pre-fills the discount input and keeps following live refreshes until the user edits the discount manually.
 let discountTouched = false;
 const liveDiscount = () => (state.live ? state.live.discount : NaN);
+// Full-precision live discount (the input shows it rounded to 0.01%) so the curves match the top panel exactly
+function liveClamped() { const r = $("pDiscountRange"); return Math.min(+r.max / 100, Math.max(+r.min / 100, liveDiscount())); }
+const liveFollow = () => !discountTouched && Number.isFinite(liveDiscount());
 function applyLiveDiscount() {
   const d = liveDiscount(); if (!Number.isFinite(d)) return;
   const r = $("pDiscountRange"), lo = +r.min / 100, hi = +r.max / 100;
@@ -394,7 +397,7 @@ function applyTopPosition(force) {
   $("topPos").textContent = Number.isFinite(v) ? usd(v).replace(".00", "") : "--";
   if ((force || !posTouched) && Number.isFinite(v)) { $("pPosition").value = v.toFixed(2); render(); }
 }
-$("amountInput").addEventListener("input", () => applyTopPosition(false));
+for (const ev of ["input", "change", "keyup"]) $("amountInput").addEventListener(ev, () => applyTopPosition(false));
 $("usePos").addEventListener("click", () => { posTouched = false; applyTopPosition(true); });
 window.addEventListener("apyx:live", (e) => { if (Number.isFinite(e.detail.fairValue)) topFair = e.detail.fairValue; applyTopPosition(false); });
 $("useLive").addEventListener("click", () => { if (state.live) { discountTouched = false; applyLiveDiscount(); } });
@@ -409,7 +412,9 @@ function renderAdvice() {
   const atFull = best.t >= chainP.tMax - (chainP.tMax - chainP.tMin) / STEPS * 1.5;
   const atFirst = best.t <= chainP.tMin + (chainP.tMax - chainP.tMin) / STEPS * 1.5;
   box.classList.toggle("none", !profitable);
-  $("adviceLabel").textContent = `At a ${pct(d)} discount`;
+  const sz = state.live && Number.isFinite(state.live.amount) && state.live.source.startsWith("KyberSwap")
+    ? ` · ${Math.round(state.live.amount).toLocaleString("en-US")} apxUSD` : "";
+  $("adviceLabel").textContent = `At a ${pct(d)} discount${sz}`;
   $("adviceDays").textContent = !profitable ? "No trade" : atFull ? `${+chainP.tMax.toFixed(1)} days` : days(best.t);
   $("adviceMove").textContent = !profitable
     ? "No profitable trade at this discount"
@@ -420,7 +425,7 @@ function renderAdvice() {
   $("adviceRet").textContent = `${pct(best.r)} over ${atFull ? +chainP.tMax.toFixed(1) : best.t.toFixed(1)} days`;
   $("adviceRet").classList.toggle("neg", best.r < 0);
   $("adviceNote").textContent = profitable
-    ? `Claim fee on day ${atFull ? +chainP.tMax.toFixed(1) : best.t.toFixed(1)}: ${pct(claimFee(chainP, best.t))} + ${trimPct(chainP.u)} vault fee. Maximizes annualized return; gas not included.`
+    ? `Claim fee on day ${atFull ? +chainP.tMax.toFixed(1) : best.t.toFixed(1)}: ${pct(claimFee(chainP, best.t))} + ${trimPct(chainP.u)} vault fee. Discount from the DEX quote for the top input amount (price impact included). Maximizes annualized return; gas not included.`
     : `Even waiting the full ${+chainP.tMax.toFixed(1)} days, the ${trimPct(chainP.u)} vault fee${chainP.minFee > 0 ? " and claim fee" : ""} exceeds the discount.`;
 }
 function onLiveDiscount(detail) {

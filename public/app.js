@@ -266,101 +266,23 @@ function swapLink(amount) {
   return url.toString();
 }
 
-function resetMetrics() {
-  els.fairValue.textContent = "--";
-  els.inputUsd.textContent = "--";
-  els.apr.textContent = "--";
-  els.output.textContent = "--";
-  els.outputUsd.textContent = "--";
-  els.net.textContent = "--";
-  els.netUsd.textContent = "--";
-  els.profit.textContent = "--";
-  els.profitUsd.textContent = "--";
-  els.spread.textContent = "--";
-  els.rate.textContent = "--";
+function setMetricsError() {
+  for (const k of ["apr", "output", "outputUsd", "net", "netUsd", "profit", "profitUsd", "spread"]) els[k].textContent = "--";
 }
 
-async function calculate() {
-  const amountText = els.amount.value;
-  const input = readInputNumber();
-  const amountInWei = parseAmount(amountText);
-  const fairValueAmountWei = ethers.parseUnits("10000", TOKENS.apxUSD.decimals);
-
-  setStatus("Loading", "loading");
-  els.panel.classList.add("updating");
-  els.button.disabled = true;
-  els.buttonText.textContent = "Updating";
-  resetMetrics();
-  els.swapLink.href = swapLink(amountText);
-
-  try {
-    if (!Number.isFinite(latestNativeApy)) loadNativeApy().catch(() => {});
-
-    const [quote, fairQuote, redeemRate] = await Promise.all([
-      fetchQuote(amountInWei, TOKENS.apyUSD),
-      fetchQuote(fairValueAmountWei, TOKENS.USDC),
-      getRedeemRate(),
-    ]);
-    const output = numberFromWei(quote.amountOutWei, TOKENS.apyUSD.decimals);
-    const fairUsdc = numberFromWei(fairQuote.amountOutWei, TOKENS.USDC.decimals);
-    const fairValue = fairUsdc / 10000;
-    latestFairValue = fairValue;
-    const gross = output * redeemRate;
-    const net = gross * (1 - claimFeeAtFullCooldown());
-    const profit = net - input;
-    const spread = (profit / input) * 100;
-    const apy = (Math.pow(1 + spread / 100, 365 / REDEEM_DAYS) - 1) * 100;
-    const netUsd = net * fairValue;
-    const profitUsd = profit * fairValue;
-
-    els.output.textContent = formatAmount(output, 2);
-    els.outputUsd.textContent = `≈ ${formatUsd(netUsd)}`;
-    els.net.textContent = formatAmount(net, 2);
-    els.netUsd.textContent = `≈ ${formatUsd(netUsd)}`;
-    els.profit.textContent = formatAmount(profit, 2);
-    els.profitUsd.textContent = `≈ ${formatUsd(profitUsd)}`;
-    els.spread.textContent = formatPercent(spread);
-    els.rate.textContent = formatAmount(redeemRate, 5);
-    els.apr.textContent = formatPercent(apy);
-    els.fairValue.textContent = `$${formatAmount(fairValue, 4)}`;
-    updateInputUsd();
-
-    setSigned(els.profit, profit);
-    setSigned(els.spread, spread);
-    setSigned(els.apr, apy);
-    setStatus("Live");
-    window.dispatchEvent(new CustomEvent("apyx:live", {
-      detail: { input, escrow: gross, fairValue, nativeApy: latestNativeApy },
-    }));
-  } catch (error) {
-    if (error.name !== "AbortError") {
-      setStatus("Error", "error");
-    }
-  } finally {
-    els.panel.classList.remove("updating");
-    els.button.disabled = false;
-    els.buttonText.textContent = "Calculate";
-  }
-}
-
-els.form.addEventListener("submit", (event) => {
-  event.preventDefault();
-  calculate().catch(() => {});
-});
-
-els.amount.addEventListener("input", updateInputUsd);
-
-
-// ---------- Current discount (headline) ----------
+// ---------- Live refresh (top input → quote → results, current discount, recommendation, curves) ----------
+// The KyberSwap quote is for the amount typed in the top input, so the price (incl. price impact), the
+// headline discount, the optimal-claim card and the lower section's live discount all share one basis.
 // discount = 1 − DEX price / gross apxUSD redemption value per apyUSD
-//   DEX price   = apxUSD paid per apyUSD (KyberSwap quote for a 10,000 apxUSD reference size;
-//                 fallback: priceNative of the deepest apyUSD/apxUSD pool on DexScreener)
+//   DEX price   = input apxUSD / apyUSD out (KyberSwap; fallback: DexScreener spot of the deepest pool)
 //   gross value = redeem rate (previewWithdraw, net of the vault fee) × (1 + vault unlockingFee)
-const DISCOUNT_REF_APX = 10_000;
-const DISCOUNT_REFRESH_MS = 30_000;
+const REFRESH_MS = 30_000;
+const INPUT_DEBOUNCE_MS = 400;
+const FAIR_REF_APX = 10_000; // fair value (USD per apxUSD) is a per-unit price, quoted at a fixed reference size
 const DEXSCREENER_URL = `https://api.dexscreener.com/latest/dex/tokens/${TOKENS.apyUSD.address}`;
-let discountRequest = null;
+let refreshSeq = 0;
 let lastDiscount = null;
+let debounceTimer = null;
 
 const vaultFee = () => (window.APYX_CURVE ? window.APYX_CURVE.vaultFee : 0.001);
 
@@ -376,18 +298,7 @@ async function fetchDexScreenerPrice() {
   if (!pairs.length) throw new Error("DexScreener: no apyUSD/apxUSD pool");
   pairs.sort((a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0));
   const top = pairs[0];
-  return { price: Number(top.priceNative), source: `DexScreener · ${top.dexId} pool`, size: "Spot (no size)", detail: "Spot price of the deepest apyUSD/apxUSD pool" };
-}
-
-async function fetchDexPrice() {
-  try {
-    const quote = await fetchQuote(ethers.parseUnits(String(DISCOUNT_REF_APX), TOKENS.apxUSD.decimals), TOKENS.apyUSD);
-    const out = numberFromWei(quote.amountOutWei, TOKENS.apyUSD.decimals);
-    if (!(out > 0)) throw new Error("empty quote");
-    return { price: DISCOUNT_REF_APX / out, source: "KyberSwap quote", size: `${DISCOUNT_REF_APX.toLocaleString("en-US")} apxUSD → apyUSD`, detail: "Includes price impact" };
-  } catch {
-    return fetchDexScreenerPrice();
-  }
+  return { price: Number(top.priceNative), source: `DexScreener · ${top.dexId} pool`, size: "Spot (no size)", detail: "Spot price of the deepest apyUSD/apxUSD pool (KyberSwap quote unavailable)" };
 }
 
 function renderDiscount() {
@@ -406,32 +317,133 @@ function renderDiscount() {
   els.discountUpdated.textContent = new Date(d.time).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-async function refreshDiscount() {
-  if (discountRequest) return discountRequest;
-  els.discountHero.classList.add("loading");
-  discountRequest = Promise.all([fetchDexPrice(), getRedeemRate()])
-    .then(([dex, redeemRate]) => {
-      const gross = redeemRate * (1 + vaultFee());
-      lastDiscount = { ...dex, redeemRate, gross, discount: 1 - dex.price / gross, time: Date.now() };
-      els.discountHero.classList.remove("error");
-      renderDiscount();
-      window.APYX_LIVE_DISCOUNT = lastDiscount;
-      window.dispatchEvent(new CustomEvent("apyx:discount", { detail: lastDiscount }));
-    })
-    .catch(() => {
-      els.discountHero.classList.add("error");
-      els.discountDetail.hidden = false;
-      els.discountDetail.textContent = lastDiscount
-        ? "Refresh failed (KyberSwap, DexScreener or RPC unreachable); showing last value. Retrying…"
-        : "Couldn't load the live DEX price (KyberSwap, DexScreener or RPC unreachable). Retrying…";
-      if (!lastDiscount) els.discountSource.textContent = "unavailable";
-      window.dispatchEvent(new CustomEvent("apyx:discount-error"));
-    })
-    .finally(() => {
-      els.discountHero.classList.remove("loading");
-      discountRequest = null;
-    });
-  return discountRequest;
+function publishDiscount(dex, redeemRate, amount) {
+  const gross = redeemRate * (1 + vaultFee());
+  lastDiscount = { ...dex, redeemRate, gross, amount, discount: 1 - dex.price / gross, time: Date.now() };
+  els.discountHero.classList.remove("error");
+  renderDiscount();
+  window.APYX_LIVE_DISCOUNT = lastDiscount;
+  window.dispatchEvent(new CustomEvent("apyx:discount", { detail: lastDiscount }));
+}
+
+function discountError() {
+  els.discountHero.classList.add("error");
+  els.discountDetail.hidden = false;
+  els.discountDetail.textContent = lastDiscount
+    ? "Refresh failed (KyberSwap, DexScreener or RPC unreachable); showing last value. Retrying…"
+    : "Couldn't load the live DEX price (KyberSwap, DexScreener or RPC unreachable). Retrying…";
+  if (!lastDiscount) els.discountSource.textContent = "unavailable";
+  window.dispatchEvent(new CustomEvent("apyx:discount-error"));
+}
+
+function setLoading(on) {
+  els.panel.classList.toggle("updating", on);
+  els.discountHero.classList.toggle("loading", on);
+  els.button.disabled = on;
+  els.buttonText.textContent = on ? "Updating" : "Calculate";
+  if (on) setStatus("Loading", "loading");
+}
+
+async function calculate() {
+  window.clearTimeout(debounceTimer);
+  debounceTimer = null;
+  const amountText = String(els.amount.value || "").trim().replace(/,/g, "");
+  const seq = ++refreshSeq;
+  let amountInWei;
+  try {
+    amountInWei = parseAmount(amountText);
+  } catch {
+    setMetricsError();
+    setLoading(false);
+    setStatus("Invalid amount", "error");
+    return;
+  }
+  const input = Number(amountText);
+  els.swapLink.href = swapLink(amountText);
+  setLoading(true);
+  if (!Number.isFinite(latestNativeApy)) loadNativeApy().catch(() => {});
+
+  const [quoteR, fairR, rateR] = await Promise.allSettled([
+    fetchQuote(amountInWei, TOKENS.apyUSD),
+    fetchQuote(ethers.parseUnits(String(FAIR_REF_APX), TOKENS.apxUSD.decimals), TOKENS.USDC),
+    getRedeemRate(),
+  ]);
+  if (seq !== refreshSeq) return; // a newer input superseded this request
+
+  try {
+    if (fairR.status === "fulfilled") {
+      latestFairValue = numberFromWei(fairR.value.amountOutWei, TOKENS.USDC.decimals) / FAIR_REF_APX;
+    }
+    if (rateR.status !== "fulfilled") throw new Error("redeem rate unavailable");
+    const redeemRate = rateR.value;
+    const fairValue = latestFairValue;
+    els.rate.textContent = formatAmount(redeemRate, 5);
+    els.fairValue.textContent = Number.isFinite(fairValue) ? `$${formatAmount(fairValue, 4)}` : "--";
+    updateInputUsd();
+
+    // Current discount: same quote as the results below (typed size); spot fallback if KyberSwap fails
+    let dex = null;
+    if (quoteR.status === "fulfilled") {
+      const out = numberFromWei(quoteR.value.amountOutWei, TOKENS.apyUSD.decimals);
+      if (out > 0) dex = { price: input / out, source: "KyberSwap quote", size: `${formatAmount(input, 2)} apxUSD → apyUSD (top input)`, detail: "Includes price impact for the input amount" };
+    }
+    if (!dex) {
+      try { dex = await fetchDexScreenerPrice(); } catch { dex = null; }
+      if (seq !== refreshSeq) return;
+    }
+    if (dex) publishDiscount(dex, redeemRate, input); else discountError();
+
+    if (quoteR.status !== "fulfilled") throw new Error("quote unavailable");
+    const output = numberFromWei(quoteR.value.amountOutWei, TOKENS.apyUSD.decimals);
+    const gross = output * redeemRate;
+    const net = gross * (1 - claimFeeAtFullCooldown());
+    const profit = net - input;
+    const spread = (profit / input) * 100;
+    const apy = (Math.pow(1 + spread / 100, 365 / REDEEM_DAYS) - 1) * 100;
+    const netUsd = net * fairValue;
+    const profitUsd = profit * fairValue;
+
+    els.output.textContent = formatAmount(output, 2);
+    els.outputUsd.textContent = `≈ ${formatUsd(netUsd)}`;
+    els.net.textContent = formatAmount(net, 2);
+    els.netUsd.textContent = `≈ ${formatUsd(netUsd)}`;
+    els.profit.textContent = formatAmount(profit, 2);
+    els.profitUsd.textContent = `≈ ${formatUsd(profitUsd)}`;
+    els.spread.textContent = formatPercent(spread);
+    els.apr.textContent = formatPercent(apy);
+    setSigned(els.profit, profit);
+    setSigned(els.spread, spread);
+    setSigned(els.apr, apy);
+    setLoading(false);
+    setStatus("Live");
+    window.dispatchEvent(new CustomEvent("apyx:live", {
+      detail: { input, escrow: gross, fairValue, nativeApy: latestNativeApy },
+    }));
+  } catch {
+    setMetricsError();
+    setLoading(false);
+    setStatus("Error", "error");
+  }
+}
+
+function scheduleCalculate() {
+  window.clearTimeout(debounceTimer);
+  els.swapLink.href = swapLink(String(els.amount.value || "").trim().replace(/,/g, ""));
+  updateInputUsd();
+  debounceTimer = window.setTimeout(() => { debounceTimer = null; calculate().catch(() => {}); }, INPUT_DEBOUNCE_MS);
+}
+
+els.form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  calculate().catch(() => {});
+});
+let lastAmountSeen = els.amount.value;
+for (const ev of ["input", "change", "keyup", "paste"]) {
+  els.amount.addEventListener(ev, () => {
+    if (els.amount.value === lastAmountSeen && ev !== "change") return;
+    lastAmountSeen = els.amount.value;
+    scheduleCalculate();
+  });
 }
 
 // Vault fee may update once on-chain params load; recompute the headline without refetching.
@@ -443,11 +455,9 @@ window.addEventListener("apyx:curve", () => {
   window.dispatchEvent(new CustomEvent("apyx:discount", { detail: lastDiscount }));
 });
 
-refreshDiscount();
-window.setInterval(refreshDiscount, DISCOUNT_REFRESH_MS);
-
 loadNativeApy().catch(() => {});
 calculate().catch(() => {});
 window.setInterval(() => {
+  if (debounceTimer) return; // a debounced re-quote for a new input is about to run
   calculate().catch(() => {});
-}, 60_000);
+}, REFRESH_MS);
