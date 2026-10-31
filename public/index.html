@@ -6,7 +6,7 @@
      like this one for free: https://netlify.new/?utm_campaign=loops&utm_source=ai-legible&utm_medium=owned&utm_content=comment&utm_id=9fdc0512-76ec-4650-b244-093505002258
      Netlify hosting facts for this site: static/SSR served via Netlify Edge. -->
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>APYX · apyUSD Arbitrage & Claim Timing</title>
+    <title>APYX · apyUSD Arbitrage, Claim Timing & Exit</title>
     <meta name="description" content="APYX static page" />
     <link rel="icon" href="./favicon-light.jpg" type="image/jpeg" media="(prefers-color-scheme: light)" />
     <link rel="icon" href="./favicon-dark.jpg" type="image/jpeg" media="(prefers-color-scheme: dark)" />
@@ -29,6 +29,13 @@
           </span>
         </div>
       </header>
+
+      <nav class="tabs" role="tablist" aria-label="Direction">
+        <button class="tab" id="tabBuy" type="button" role="tab" aria-selected="true" aria-controls="paneBuy" data-hash="">Buy apyUSD <small>apxUSD → apyUSD · arbitrage</small></button>
+        <button class="tab" id="tabSell" type="button" role="tab" aria-selected="false" aria-controls="paneSell" data-hash="#sell">Sell apyUSD <small>apyUSD → apxUSD · exit cost</small></button>
+      </nav>
+
+      <div class="tab-pane" id="paneBuy" role="tabpanel" aria-labelledby="tabBuy">
 
       <section class="arb-panel" aria-labelledby="arbTitle">
         <div class="panel-copy">
@@ -289,6 +296,121 @@
         <p class="cp-note">Model (from the verified contracts): claim fee c(t) = maxFee − (maxFee − minFee) · tHat<sup>k</sup>, tHat = (t − minDuration) / (maxDuration − minDuration), from <a href="https://etherscan.io/address/0x9bf51F33955EC70f87C4b5C49441815589043237#readProxyContract" target="_blank" rel="noopener">UnlockReceipt.feeCurve()</a>; the apyUSD vault also takes unlockingFee u upfront, so total cost(t) = 1 − (1 − c(t)) / (1 + u). Trade return r(t) = (1 − cost(t)) / (1 − discount) − 1; APY = (1 + r)<sup>365/t</sup> − 1. apyUSD does not accrue yield while unlocking. Gas, slippage and price impact are not included. Sources: <a href="https://docs.apyx.fi/technical-overview/unlocking" target="_blank" rel="noopener">Unlocking</a>, <a href="https://docs.apyx.fi/product-overview/apyusd-overview" target="_blank" rel="noopener">apyUSD</a>, <a href="https://docs.apyx.fi/resources/faq" target="_blank" rel="noopener">FAQ</a>.</p>
       </section>
 
+      </div>
+
+      <div class="tab-pane" id="paneSell" role="tabpanel" aria-labelledby="tabSell" hidden>
+        <section class="arb-panel sell-panel" id="sellPanel" aria-labelledby="sellTitle">
+          <div class="panel-copy">
+            <p class="kicker">apyUSD → apxUSD</p>
+            <h1 id="sellTitle">Exit cost: DEX vs unlock</h1>
+          </div>
+
+          <form class="arb-form" id="sellForm">
+            <label class="amount-control" for="sellAmount">
+              <span>Sell</span>
+              <span class="input-shell">
+                <input id="sellAmount" inputmode="decimal" autocomplete="off" value="10000" />
+                <em id="sellValue">--</em>
+              </span>
+            </label>
+            <div class="token-pill">apyUSD</div>
+            <button class="quote-button" id="sellButton" type="submit"><span>Calculate</span></button>
+          </form>
+
+          <div class="advice sell-advice" id="sellAdvice" aria-live="polite">
+            <div class="advice-card">
+              <span>Cheapest exit</span>
+              <strong id="sBest">--</strong>
+              <em id="sBestSub">--</em>
+            </div>
+            <div class="advice-text">
+              <p class="advice-move" id="sRec">Loading live DEX quote and on-chain data…</p>
+              <dl class="advice-stats">
+                <div><dt>Breakeven vs DEX</dt><dd id="sBe">--</dd></div>
+                <div><dt>Optimal unlock day</dt><dd id="sOpt">--</dd></div>
+                <div><dt>Saving vs other route</dt><dd id="sSave">--</dd></div>
+              </dl>
+              <small id="sRecNote">Costs are measured against the gross redemption value (apyUSD × share price in apxUSD).</small>
+            </div>
+          </div>
+
+          <div class="discount-hero" id="sellHero" aria-live="polite">
+            <div class="discount-main">
+              <span class="discount-label">Total DEX discount (at your size)</span>
+              <strong id="sDexCost">--</strong>
+              <em id="sDexDetail">Loading live DEX quote…</em>
+              <dl class="discount-rows" id="sDexRows" hidden>
+                <div><dt>You receive on DEX</dt><dd><span id="sOut">--</span> <small>apxUSD</small></dd></div>
+                <div><dt>Gross redemption value</dt><dd><span id="sGross">--</span> <small>apxUSD</small></dd></div>
+                <div><dt>DEX price at size</dt><dd><span id="sPx">--</span> <small>apxUSD per apyUSD</small></dd></div>
+                <div><dt>Spot price</dt><dd><span id="sSpot">--</span> <small id="sSpotNote">apxUSD per apyUSD</small></dd></div>
+                <div><dt>Spot discount</dt><dd><span id="sSpotDisc">--</span> <small>vs share price</small></dd></div>
+                <div><dt>Price impact of size</dt><dd><span id="sImpact">--</span> <small>vs spot</small></dd></div>
+                <div><dt>Share price (gross)</dt><dd><span id="sRate">--</span> <small>convertToAssets</small></dd></div>
+                <div><dt>Swap gas</dt><dd><span id="sGas">--</span> <small>KyberSwap estimate</small></dd></div>
+              </dl>
+            </div>
+            <div class="discount-meta">
+              <span>Source <strong id="sSource">--</strong></span>
+              <span>Updated <strong id="sUpdated">--</strong></span>
+            </div>
+          </div>
+
+          <p class="disclaimer">
+            Not financial advice. Data is sourced from aggregator APIs and on-chain calls. Accuracy is not guaranteed, and all estimates are for informational purposes only.
+          </p>
+        </section>
+
+        <section class="claim-panel" id="sellTiming" aria-labelledby="sellTimingTitle">
+          <div class="cp-top">
+            <span class="cp-kicker">APYX / EXIT apyUSD</span>
+            <span class="cp-date" id="sFeeTag">FLEXIBLE UNLOCK</span>
+          </div>
+          <h2 id="sellTimingTitle">Unlock cost by claim day vs selling on the DEX</h2>
+          <p class="cp-sub">Unlocking costs the vault fee plus the receipt's claim fee for the day you claim, and while you wait the escrowed apxUSD earns nothing, so you also give up the apyUSD yield. Selling on the DEX costs the discount to the share price, paid now.</p>
+
+          <form class="cp-controls s-controls" id="sCtlForm" onsubmit="return false">
+            <label>DEX discount (%) <i class="cp-hint" id="sDexHint">live</i>
+              <input id="sDexInput" type="number" step="0.01" min="-5" max="50" value="" placeholder="--" />
+            </label>
+            <label>apyUSD APY (%) <i class="cp-hint" id="sApyHint">live</i>
+              <input id="sApyInput" type="number" step="0.1" min="0" max="200" value="" placeholder="--" />
+            </label>
+            <label class="s-check"><span>Gas</span>
+              <span class="s-check-row"><input id="sGasToggle" type="checkbox" /> Include gas <i class="cp-hint" id="sGasHint">--</i></span>
+            </label>
+            <div class="cp-buttons">
+              <button type="button" id="sUseDex" disabled>Use live DEX discount <span id="sLiveDex">--</span></button>
+              <button type="button" id="sUseApy" disabled>Use live APY <span id="sLiveApy">--</span></button>
+            </div>
+          </form>
+
+          <p class="cp-axis" id="sChainStatus">On-chain data: loading…</p>
+
+          <div class="cp-cards four">
+            <div class="cp-card"><span>Sell on DEX now</span><strong id="cDex">--</strong><em id="cDexSub">--</em></div>
+            <div class="cp-card accent"><span id="cOptLabel">Unlock, optimal day</span><strong id="cOpt">--</strong><em id="cOptSub">--</em></div>
+            <div class="cp-card"><span>Unlock, earliest claim (day 3)</span><strong id="cFirst">--</strong><em id="cFirstSub">--</em></div>
+            <div class="cp-card"><span>Breakeven day vs DEX</span><strong id="cBe">--</strong><em id="cBeSub">--</em></div>
+          </div>
+
+          <div class="cp-chart-head"><h3>Total cost of exiting by claim day <small>(% left · apxUSD right)</small></h3></div>
+          <div class="cp-chart" id="sChart"></div>
+          <p class="cp-axis">Claim day after unlock · <span class="lg lg-b">unlock total</span> <span class="lg lg-f">fees only</span> <span class="lg lg-r">DEX now</span></p>
+
+          <div class="cp-table-wrap">
+            <table class="cp-table" id="sTable">
+              <thead><tr><th>Claim day</th><th>Claim fee</th><th>Fees (vault + claim)</th><th>Lost yield</th><th>Total cost</th><th>Cost (apxUSD)</th><th>You receive (apxUSD)</th><th>vs DEX</th></tr></thead>
+              <tbody id="sRows"></tbody>
+            </table>
+          </div>
+
+          <h4 class="cp-note-title">Assumptions</h4>
+          <p class="cp-note">apxUSD ≈ 1 USD (dollar amounts are apxUSD) and no depeg while you wait. Gas is excluded unless “Include gas” is ticked (swap gas from KyberSwap; unlock = request + claim, ≈ 370k gas at the same gas price). DEX discount = 1 − apxUSD received / (apyUSD × share price), using the KyberSwap route at your size (DexScreener spot price as fallback, without price impact). Lost yield = (1 + APY)<sup>t/365</sup> − 1, APY from the on-chain apyUSD share price over the last 7 days unless overridden.</p>
+          <p class="cp-note">Model (from the verified contracts): redeeming s apyUSD values them at the gross share price G = convertToAssets; the vault takes unlockingFee u on top, so the receipt escrows G·s/(1 + u) apxUSD (= previewRedeem); claiming on day t pays escrow · (1 − c(t)), c(t) = maxFee − (maxFee − minFee)·tHat<sup>k</sup> from <a href="https://etherscan.io/address/0x9bf51F33955EC70f87C4b5C49441815589043237#readProxyContract" target="_blank" rel="noopener">UnlockReceipt.feeCurve()</a>. Fee cost(t) = 1 − (1 − c(t))/(1 + u); total unlock cost(t) = fee cost(t) + lost yield(t). Claims open on day 3 at maxFee. Cancelling an unlock re-mints apyUSD but charges minFee and does not refund the vault fee.</p>
+        </section>
+      </div>
+
       <footer class="site-footer">
         Developed by
         <a href="https://x.com/ArabeBluechip" target="_blank" rel="noopener noreferrer">@ArabeBluechip</a>
@@ -303,5 +425,6 @@
     </main>
     <script type="module" src="./app.js"></script>
     <script type="module" src="./analysis.js"></script>
+    <script type="module" src="./sell.js"></script>
   </body>
 </html>

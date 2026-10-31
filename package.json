@@ -1,2 +1,2 @@
 { "name": "apyx-arbitrage", "version": "1.0.0", "private": true,
-  "scripts": { "build": "rm -rf dist && cp -r public dist", "serve": "npx --yes serve -l 4173 dist" } }
+  "scripts": { "build": "rm -rf dist && cp -r public dist", "serve": "npx --yes serve -l 4173 dist", "test": "node --test test/*.test.mjs" } }
