@@ -1,5 +1,5 @@
 // "Sell apyUSD" tab: cost of exiting apyUSD → apxUSD on a DEX now vs unlocking and claiming on day 3..20.
-import { DEFAULT_CURVE, DEFAULT_VAULT_FEE, unlockFeeCost, unlockCost, dexCost, priceImpact, schedule, optimalDay, breakeven, apyFromSharePrice } from "./sell-math.js";
+import { DEFAULT_CURVE, DEFAULT_VAULT_FEE, unlockFeeCost, unlockCost, dexCost, priceImpact, schedule, optimalDay, breakeven, breakevenReinvested, unlockVsDexReinvested, dexWithYield, apyFromSharePrice } from "./sell-math.js";
 
 const $ = (id) => document.getElementById(id);
 const APX = "0x98A878b1Cd98131B271883B390f68D2c90674665";
@@ -171,10 +171,17 @@ function model() {
   const dex = Number.isFinite(dexBase) ? dexBase + gasDex : NaN;
   const apyEff = Number.isFinite(apy) ? apy : 0;
   const cost = (t) => unlockCost(curve, u, apyEff, t) + gasUnlock;
-  const rows = schedule(curve, u, apyEff, dex - gasUnlock, value).map((r) => ({ ...r, total: r.total + gasUnlock, costApx: value * (r.total + gasUnlock) }));
+  const rows = schedule(curve, u, apyEff, dex - gasUnlock, value).map((r) => ({
+    ...r, total: r.total + gasUnlock, costApx: value * (r.total + gasUnlock),
+    // "If I sell on the DEX now": proceeds (net of swap gas when ticked) earning the same APY as the lost yield until day t.
+    dexYield: Number.isFinite(dex) ? dexWithYield(value * (1 - dex), apyEff, r.t) : NaN,
+    netUnlock: r.received - value * gasUnlock,
+    deltaReinv: Number.isFinite(dex) ? value * unlockVsDexReinvested(curve, u, apyEff, dex, r.t, gasUnlock) : NaN,
+  }));
   const opt = optimalDay(curve, u, apyEff);
   const be = breakeven(curve, u, apyEff, dex - gasUnlock);
-  return { curve, u, amount, gross, value, d, liveDex, liveApy, dexBase, dex, apy, apyEff, gasOn, dexGas, unlockGas, gasUnlock, cost, rows, opt, be };
+  const beR = breakevenReinvested(curve, u, apyEff, dex, gasUnlock);
+  return { beR, curve, u, amount, gross, value, d, liveDex, liveApy, dexBase, dex, apy, apyEff, gasOn, dexGas, unlockGas, gasUnlock, cost, rows, opt, be };
 }
 
 // ---------- render ----------
@@ -232,6 +239,7 @@ function render() {
   const be = m.be;
   $("cBe").textContent = !Number.isFinite(m.dex) ? "--" : be.never ? "never" : be.always ? `day ${dayStr(c.tMin)}` : `day ${dayStr(be.from)}`;
   $("cBeSub").textContent = !Number.isFinite(m.dex) ? "--" : be.never ? "DEX is cheaper on every claim day" : be.always ? "Unlock beats the DEX on every claim day" : `Unlock is cheaper from day ${be.firstDay}${be.to < c.tMax - 1e-6 ? ` to day ${dayStr(be.to)}` : " onward"}`;
+  $("cBeSub").textContent += Number.isFinite(m.dex) ? ` · ${reinvNote(m)}` : "";
 
   // recommendation
   const dexWins = Number.isFinite(m.dex) && optRow && m.dex <= optRow.total;
@@ -250,14 +258,29 @@ function render() {
   renderChart(m);
 }
 
+// Breakeven when the DEX proceeds are assumed to earn the same APY (table's "DEX + yield" column).
+function reinvNote(m) {
+  const b = m.beR, b0 = m.be;
+  const txt = b.never ? "never" : b.always ? "every day" : `day ${dayStr(b.from)}`;
+  const same = b.never === b0.never && b.always === b0.always && b.firstDay === b0.firstDay;
+  return `if DEX proceeds earn the APY: ${txt}${same ? " (same claim day)" : ` (first winning claim day ${b.firstDay ?? "none"} vs ${b0.firstDay ?? "none"})`}`;
+}
+
 function renderTable(m) {
   const be = m.be;
+  const beR = m.beR, V = m.value;
   $("sRows").innerHTML = m.rows.map((r) => {
     const tags = (r.t === m.opt.day ? '<span class="tag">optimal</span>' : "") + (be.firstDay === r.t ? '<span class="tag be">breakeven</span>' : "");
-    const vs = Number.isFinite(m.dex) ? r.total - m.dex : NaN;
-    const cls = Number.isFinite(vs) ? (vs <= 0 ? "gain" : "loss") : "";
-    return `<tr class="${cls}${r.t === m.opt.day ? " opt" : ""}"><td>Day ${r.t}${tags}</td><td>${pct(r.claimFee, 3)}</td><td>${pct(r.fee, 3)}</td><td>${pct(r.lostYield, 3)}</td><td>${pct(r.total, 3)}</td><td>${num(r.costApx)}</td><td>${num(r.received)}</td><td class="v">${Number.isFinite(vs) ? `${vs > 0 ? "+" : ""}${pct(vs, 3)}` : "--"}</td></tr>`;
+    const tagR = beR.firstDay === r.t ? '<span class="tag be">unlock ahead</span>' : "";
+    const d = r.deltaReinv;
+    const cls = Number.isFinite(d) ? (d >= 0 ? "gain" : "loss") : "";
+    const dexCell = Number.isFinite(r.dexYield) ? `${num(r.dexYield)}${tagR}<small>+${num(r.dexYield - V * (1 - m.dex))} yield</small>` : "--";
+    const vsCell = Number.isFinite(d) ? `${d >= 0 ? "+" : "−"}${num(Math.abs(d))}<small>${d >= 0 ? "+" : "−"}${pct(Math.abs(d / V), 3)}</small>` : "--";
+    return `<tr class="${cls}${r.t === m.opt.day ? " opt" : ""}${beR.firstDay === r.t ? " be-row" : ""}"><td>Day ${r.t}${tags}</td><td>${pct(r.claimFee, 3)}</td><td>${pct(r.fee, 3)}</td><td>${pct(r.lostYield, 3)}</td><td>${pct(r.total, 3)}</td><td>${num(r.costApx)}</td><td>${num(r.netUnlock)}</td><td class="dy">${dexCell}</td><td class="v">${vsCell}</td></tr>`;
   }).join("");
+  $("sReinvNote").textContent = Number.isFinite(m.dex) && Number.isFinite(V)
+    ? `Breakeven ${m.be.never ? "never" : `day ${dayStr(m.be.always ? m.curve.tMin : m.be.from)}`} on costs; ${reinvNote(m)}. The difference is small: the cost view charges the lost yield on the full gross value, while here the yield accrues only on the smaller DEX proceeds.`
+    : "";
 }
 
 function niceTicks(lo, hi, n = 5) {

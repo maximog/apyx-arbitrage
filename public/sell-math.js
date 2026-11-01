@@ -25,6 +25,14 @@ export const unlockCost = (c, u, apy, t) => unlockFeeCost(c, u, t) + lostYield(a
 export const dexCost = (apxOut, shares, grossRate) => 1 - apxOut / (shares * grossRate);
 export const priceImpact = (sizePrice, spotPrice) => 1 - sizePrice / spotPrice;
 
+// "If I exit on the DEX": apxUSD received now, left earning the same APY (same compounding as lostYield) for t days.
+export const dexWithYield = (apxOut, apy, t) => apxOut * (1 + lostYield(apy, t));
+
+// Day-t comparison in apxUSD-per-gross-value terms: unlock pays (1 − c(t))/(1 + u) − extraUnlock (e.g. gas);
+// the DEX path is (1 − dex)·(1 + APY)^(t/365). Positive = unlock ends up with more.
+export const unlockVsDexReinvested = (c, u, apy, dex, t, extraUnlock = 0) =>
+  (1 - unlockFeeCost(c, u, t) - extraUnlock) - (1 - dex) * (1 + lostYield(apy, t));
+
 // One row per integer day from tMin to tMax.
 export function schedule(c, u, apy, dex, value = 1) {
   const rows = [];
@@ -35,6 +43,8 @@ export function schedule(c, u, apy, dex, value = 1) {
       received: value * (1 - claimFee(c, t)) / (1 + u),
       costApx: value * total,
       vsDex: Number.isFinite(dex) ? total - dex : NaN,
+      dexYield: Number.isFinite(dex) ? dexWithYield(value * (1 - dex), apy, t) : NaN,
+      deltaReinv: Number.isFinite(dex) ? value * unlockVsDexReinvested(c, u, apy, dex, t) : NaN,
     });
   }
   return rows;
@@ -58,8 +68,19 @@ export function optimalDay(c, u, apy, step = 0.01) {
 // Days on which unlocking is cheaper than selling on the DEX.
 // Returns { from, to } (fractional days; null when unlocking never beats the DEX), and `firstDay` (first integer day that beats it).
 export function breakeven(c, u, apy, dex, step = 0.01) {
-  if (!Number.isFinite(dex)) return { from: null, to: null, firstDay: null, always: false, never: true };
-  const g = (t) => unlockCost(c, u, apy, t) - dex;
+  if (!Number.isFinite(dex)) return crossing(null, c, step);
+  return crossing((t) => unlockCost(c, u, apy, t) - dex, c, step);
+}
+
+// Same, but the DEX proceeds are assumed to earn `apy` until day t (terminal-value comparison, see unlockVsDexReinvested).
+export function breakevenReinvested(c, u, apy, dex, extraUnlock = 0, step = 0.01) {
+  if (!Number.isFinite(dex)) return crossing(null, c, step);
+  return crossing((t) => -unlockVsDexReinvested(c, u, apy, dex, t, extraUnlock), c, step);
+}
+
+// g(t) <= 0 means unlocking wins on day t.
+function crossing(g, c, step) {
+  if (!g) return { from: null, to: null, firstDay: null, always: false, never: true };
   let from = null, to = null, prev = c.tMin;
   if (g(c.tMin) <= 0) from = c.tMin;
   for (let t = c.tMin + step; t <= c.tMax + 1e-9; t += step) {

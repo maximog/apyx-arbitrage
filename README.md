@@ -23,6 +23,9 @@ Second tab (`#sell`, code in `public/sell.js`, pure formulas in `public/sell-mat
   - Optimal day = argmin over days 3…20.
   - Breakeven = first day on which the unlock cost ≤ DEX cost.
   - The recommendation card compares DEX against the optimal unlock day.
+- **"If sold on DEX + yield" column** (second to last in the per-day table): `DEX(t) = apxUSD out × (1 + APY)^(t/365)`. It assumes the DEX proceeds stay in apxUSD and earn the same APY as the lost yield (e.g. put back into apyUSD), with the same compounding.
+  - The last column, **vs DEX**, is `unlock received − DEX(t)` in apxUSD (+ = unlock ahead) and as % of the gross value.
+  - In this terminal-value view, the unlock wins iff `fee + ly ≤ dex·(1 + ly)`. The cost view uses `fee + ly ≤ dex`, which charges the lost yield on the full gross value. So this breakeven is slightly earlier (≈0.1 day today); the card and the note show both.
 - **Overrides**: the DEX discount and APY inputs follow the live values until edited; "Use live …" re-links them.
 - **Gas** is optional: swap gas from KyberSwap `gasUsd`. Unlock gas = 370k gas (request ≈ 250k + claim ≈ 115k, measured on-chain) at the same gas price.
 - **Refresh**: every 30 s while the tab is visible, plus a 400 ms debounce on size changes.

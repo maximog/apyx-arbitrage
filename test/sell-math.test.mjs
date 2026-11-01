@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_CURVE as C, claimFee, unlockFeeCost, lostYield, unlockCost, dexCost, priceImpact, schedule, optimalDay, breakeven, apyFromSharePrice } from "../public/sell-math.js";
+import { DEFAULT_CURVE as C, claimFee, unlockFeeCost, lostYield, unlockCost, dexCost, priceImpact, schedule, optimalDay, breakeven, apyFromSharePrice, dexWithYield, unlockVsDexReinvested, breakevenReinvested } from "../public/sell-math.js";
 
 const near = (a, b, eps = 1e-10) => assert.ok(Math.abs(a - b) < eps, `${a} ≉ ${b}`);
 const u = 0.001;
@@ -63,4 +63,30 @@ test("breakeven vs DEX", () => {
 test("APY from share price", () => {
   near(apyFromSharePrice(1.14, 1, 365 * 86400), 0.14);
   near(apyFromSharePrice(1, 1, 86400), 0);
+});
+
+test("DEX + yield: proceeds compound at the lost-yield APY", () => {
+  near(dexWithYield(14000, 0.14, 0), 14000);
+  near(dexWithYield(14000, 0.14, 365), 14000 * 1.14, 1e-8);
+  near(dexWithYield(14000, 0.14, 10), 14000 * (1 + lostYield(0.14, 10)), 1e-9);
+  near(dexWithYield(14000, 0.14, 20), 14000 * Math.pow(1.14, 20 / 365), 1e-9);
+  // Δ = unlock net − DEX with yield, per unit of gross value
+  const dex = 0.0164, t = 10;
+  near(unlockVsDexReinvested(C, u, 0.14, dex, t), (1 - claimFee(C, t)) / (1 + u) - (1 - dex) * Math.pow(1.14, t / 365));
+  // with no yield the reinvested comparison equals the plain cost comparison
+  near(unlockVsDexReinvested(C, u, 0, dex, t), dex - unlockCost(C, u, 0, t));
+  const r = schedule(C, u, 0.14, dex, 10000).find((x) => x.t === 20);
+  near(r.dexYield, 10000 * (1 - dex) * Math.pow(1.14, 20 / 365), 1e-8);
+  near(r.deltaReinv, r.received - r.dexYield, 1e-8);
+});
+
+test("breakeven with DEX proceeds reinvested", () => {
+  const dex = 0.0164, b0 = breakeven(C, u, 0.14, dex), b = breakevenReinvested(C, u, 0.14, dex);
+  near(unlockVsDexReinvested(C, u, 0.14, dex, b.from), 0, 1e-9);
+  assert.ok(b.from <= b0.from); // the yield is earned on the smaller DEX proceeds (1 − dex), so the unlock wins slightly earlier
+  assert.ok(b0.from - b.from < 0.5);
+  assert.equal(b.to, 20);
+  near(breakevenReinvested(C, u, 0, dex).from, breakeven(C, u, 0, dex).from, 1e-6); // identical without yield
+  assert.equal(breakevenReinvested(C, u, 0.14, 0.001).never, true);
+  assert.equal(breakevenReinvested(C, u, 0.14, 0.05).always, true);
 });
