@@ -90,3 +90,28 @@ test("breakeven with DEX proceeds reinvested", () => {
   assert.equal(breakevenReinvested(C, u, 0.14, 0.001).never, true);
   assert.equal(breakevenReinvested(C, u, 0.14, 0.05).always, true);
 });
+
+test("opportunity yield drives DEX + yield and vs DEX, not the lost yield", () => {
+  const dex = 0.0164, base = schedule(C, u, 0.14, dex, 10000), opp8 = schedule(C, u, 0.14, dex, 10000, 0.08);
+  // default oppApy = apy: identical to the single-APY schedule
+  assert.deepEqual(schedule(C, u, 0.14, dex, 10000, 0.14), base);
+  for (let i = 0; i < base.length; i++) {
+    const a = base[i], b = opp8[i];
+    near(b.lostYield, a.lostYield); near(b.total, a.total); near(b.costApx, a.costApx); near(b.received, a.received); near(b.vsDex, a.vsDex);
+    near(b.dexYield, 10000 * (1 - dex) * Math.pow(1.08, a.t / 365), 1e-8);
+    assert.ok(b.dexYield < a.dexYield);
+    near(b.deltaReinv, b.received - b.dexYield, 1e-8);
+    assert.ok(b.deltaReinv > a.deltaReinv); // a lower opportunity yield makes the unlock relatively better
+  }
+  // the reinvested breakeven moves with the opportunity yield; the cost breakeven and optimal day do not depend on it
+  assert.ok(breakevenReinvested(C, u, 0.08, dex).from < breakevenReinvested(C, u, 0.14, dex).from);
+});
+
+test("apyUSD APY drives the lost yield, not DEX + yield or vs DEX", () => {
+  const dex = 0.0164, a = schedule(C, u, 0.14, dex, 10000, 0.08), b = schedule(C, u, 0.25, dex, 10000, 0.08);
+  for (let i = 0; i < a.length; i++) {
+    near(a[i].dexYield, b[i].dexYield); near(a[i].deltaReinv, b[i].deltaReinv);
+    assert.ok(b[i].lostYield > a[i].lostYield);
+    near(b[i].lostYield, lostYield(0.25, b[i].t));
+  }
+});

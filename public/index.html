@@ -373,15 +373,19 @@
             <label>DEX discount (%) <i class="cp-hint" id="sDexHint">live</i>
               <input id="sDexInput" type="number" step="0.01" min="-5" max="50" value="" placeholder="--" />
             </label>
-            <label>apyUSD APY (%) <i class="cp-hint" id="sApyHint">live</i>
+            <label title="apyUSD APY used for the unlock's lost yield (the escrow earns nothing while you wait). Live = on-chain share price, 7 days.">apyUSD APY (%) <i class="cp-hint" id="sApyHint">live</i>
               <input id="sApyInput" type="number" step="0.1" min="0" max="200" value="" placeholder="--" />
+            </label>
+            <label title="Yield you can earn on the apxUSD received if you sell on the DEX now. Used only for the “If sold on DEX + yield” and “vs DEX” columns; defaults to the apyUSD APY.">Opportunity yield (%) <i class="cp-hint" id="sOppHint">= apyUSD APY</i>
+              <input id="sOppInput" type="number" step="0.1" min="0" max="200" value="" placeholder="--" />
             </label>
             <label class="s-check"><span>Gas</span>
               <span class="s-check-row"><input id="sGasToggle" type="checkbox" /> Include gas <i class="cp-hint" id="sGasHint">--</i></span>
             </label>
             <div class="cp-buttons">
               <button type="button" id="sUseDex" disabled>Use live DEX discount <span id="sLiveDex">--</span></button>
-              <button type="button" id="sUseApy" disabled>Use live APY <span id="sLiveApy">--</span></button>
+              <button type="button" id="sUseApy" disabled>Use live apyUSD APY <span id="sLiveApy">--</span></button>
+              <button type="button" id="sUseOpp" disabled>Opportunity yield = apyUSD APY <span id="sOppLive">--</span></button>
             </div>
           </form>
 
@@ -400,14 +404,14 @@
 
           <div class="cp-table-wrap">
             <table class="cp-table" id="sTable">
-              <thead><tr><th>Claim day</th><th>Claim fee</th><th>Fees (vault + claim)</th><th>Lost yield</th><th>Total cost</th><th>Cost (apxUSD)</th><th>You receive (apxUSD)</th><th title="apxUSD received on the DEX now, left earning the current apyUSD APY (same compounding as lost yield) until that day">If sold on DEX + yield (apxUSD)</th><th title="Unlock received − DEX + yield on that day">vs DEX (unlock − DEX + yield)</th></tr></thead>
+              <thead><tr><th>Claim day</th><th>Claim fee</th><th>Fees (vault + claim)</th><th id="sLyHead" title="Yield the escrow gives up vs holding apyUSD, at the apyUSD APY">Lost yield <small>(apyUSD APY)</small></th><th>Total cost</th><th>Cost (apxUSD)</th><th>You receive (apxUSD)</th><th id="sDyHead" title="apxUSD received on the DEX now, left earning the opportunity-cost yield (same compounding as lost yield) until that day">If sold on DEX + yield (apxUSD) <small>(opportunity yield)</small></th><th title="Unlock received − DEX + yield on that day">vs DEX (unlock − DEX + yield)</th></tr></thead>
               <tbody id="sRows"></tbody>
             </table>
           </div>
-          <p class="cp-note"><strong>If sold on DEX + yield</strong> = apxUSD received on the DEX now × (1 + APY)<sup>t/365</sup>. This assumes the DEX proceeds stay in apxUSD and earn the same APY that the unlock gives up (the lost-yield APY, same compounding), e.g. by putting them back into apyUSD. <strong>vs DEX</strong> = unlock received − that amount on the same day (+ = unlock ends with more; the % is relative to the gross value). The row tagged “unlock ahead” is the first claim day on which the unlock overtakes the DEX path. <span id="sReinvNote"></span></p>
+          <p class="cp-note"><strong>If sold on DEX + yield</strong> = apxUSD received on the DEX now × (1 + opportunity yield)<sup>t/365</sup>. The opportunity yield is what you can earn on those apxUSD elsewhere (same compounding as the lost yield); by default it equals the apyUSD APY (e.g. putting them back into apyUSD) and you can set it independently. The apyUSD APY drives only the lost yield of the unlock. <strong>vs DEX</strong> = unlock received − that amount on the same day (+ = unlock ends with more; the % is relative to the gross value). The row tagged “unlock ahead” is the first claim day on which the unlock overtakes the DEX path. <span id="sReinvNote"></span></p>
 
           <h4 class="cp-note-title">Assumptions</h4>
-          <p class="cp-note">apxUSD ≈ 1 USD (dollar amounts are apxUSD) and no depeg while you wait. Gas is excluded unless “Include gas” is ticked (swap gas from KyberSwap; unlock = request + claim, ≈ 370k gas at the same gas price). DEX discount = 1 − apxUSD received / (apyUSD × share price), using the KyberSwap route at your size (DexScreener spot price as fallback, without price impact). Lost yield = (1 + APY)<sup>t/365</sup> − 1, APY from the on-chain apyUSD share price over the last 7 days unless overridden.</p>
+          <p class="cp-note">apxUSD ≈ 1 USD (dollar amounts are apxUSD) and no depeg while you wait. Gas is excluded unless “Include gas” is ticked (swap gas from KyberSwap; unlock = request + claim, ≈ 370k gas at the same gas price). DEX discount = 1 − apxUSD received / (apyUSD × share price), using the KyberSwap route at your size (DexScreener spot price as fallback, without price impact). Lost yield = (1 + apyUSD APY)<sup>t/365</sup> − 1, apyUSD APY from the on-chain share price over the last 7 days unless overridden. The opportunity yield (DEX + yield and vs DEX columns, reinvested breakeven) follows the apyUSD APY until edited.</p>
           <p class="cp-note">Model (from the verified contracts): redeeming s apyUSD values them at the gross share price G = convertToAssets; the vault takes unlockingFee u on top, so the receipt escrows G·s/(1 + u) apxUSD (= previewRedeem); claiming on day t pays escrow · (1 − c(t)), c(t) = maxFee − (maxFee − minFee)·tHat<sup>k</sup> from <a href="https://etherscan.io/address/0x9bf51F33955EC70f87C4b5C49441815589043237#readProxyContract" target="_blank" rel="noopener">UnlockReceipt.feeCurve()</a>. Fee cost(t) = 1 − (1 − c(t))/(1 + u); total unlock cost(t) = fee cost(t) + lost yield(t). Claims open on day 3 at maxFee. Cancelling an unlock re-mints apyUSD but charges minFee and does not refund the vault fee.</p>
         </section>
       </div>

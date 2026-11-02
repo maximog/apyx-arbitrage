@@ -23,10 +23,11 @@ Second tab (`#sell`, code in `public/sell.js`, pure formulas in `public/sell-mat
   - Optimal day = argmin over days 3…20.
   - Breakeven = first day on which the unlock cost ≤ DEX cost.
   - The recommendation card compares DEX against the optimal unlock day.
-- **"If sold on DEX + yield" column** (second to last in the per-day table): `DEX(t) = apxUSD out × (1 + APY)^(t/365)`. It assumes the DEX proceeds stay in apxUSD and earn the same APY as the lost yield (e.g. put back into apyUSD), with the same compounding.
+- **"If sold on DEX + yield" column** (second to last in the per-day table): `DEX(t) = apxUSD out × (1 + opp)^(t/365)`, where `opp` is the **Opportunity yield (%)** input: what the apxUSD from the DEX can earn elsewhere, same compounding as the lost yield. By default it follows the apyUSD APY (live or manual), i.e. the proceeds are put back into apyUSD; once edited it is independent.
+  - Which APY drives what: **apyUSD APY** → lost yield, total unlock cost, cost breakeven, optimal day, chart, recommendation. **Opportunity yield** → DEX + yield, vs DEX, and the reinvested breakeven ("unlock ahead" tag, card/note).
   - The last column, **vs DEX**, is `unlock received − DEX(t)` in apxUSD (+ = unlock ahead) and as % of the gross value.
-  - In this terminal-value view, the unlock wins iff `fee + ly ≤ dex·(1 + ly)`. The cost view uses `fee + ly ≤ dex`, which charges the lost yield on the full gross value. So this breakeven is slightly earlier (≈0.1 day today); the card and the note show both.
-- **Overrides**: the DEX discount and APY inputs follow the live values until edited; "Use live …" re-links them.
+  - In this terminal-value view, the unlock wins iff `fee + ly ≤ dex·(1 + ly)` (when opp = apyUSD APY). The cost view uses `fee + ly ≤ dex`, which charges the lost yield on the full gross value. So this breakeven is slightly earlier (≈0.1 day today); the card and the note show both.
+- **Overrides**: the DEX discount and apyUSD APY inputs follow the live values until edited; "Use live …" re-links them. The opportunity yield follows the apyUSD APY until edited; "Opportunity yield = apyUSD APY" re-links it. Overrides are not persisted (reset on reload).
 - **Gas** is optional: swap gas from KyberSwap `gasUsd`. Unlock gas = 370k gas (request ≈ 250k + claim ≈ 115k, measured on-chain) at the same gas price.
 - **Refresh**: every 30 s while the tab is visible, plus a 400 ms debounce on size changes.
 - **Assumptions**: apxUSD ≈ 1 USD, no depeg during the wait, gas excluded by default.

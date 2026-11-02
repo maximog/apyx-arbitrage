@@ -123,7 +123,7 @@ async function loadDex(amount) {
 }
 
 // ---------- state ----------
-const state = { amount: 10000, chain: null, apy: null, dex: null, updated: null, error: null, dexTouched: false, apyTouched: false };
+const state = { amount: 10000, chain: null, apy: null, dex: null, updated: null, error: null, dexTouched: false, apyTouched: false, oppTouched: false };
 let reqId = 0, loading = false, started = false;
 
 function readAmount() {
@@ -160,7 +160,7 @@ function model() {
   const d = state.dex && state.dex.amount === amount ? state.dex : null;
   const liveDex = d && Number.isFinite(gross) ? dexCost(d.out, amount, gross) : NaN;
   const liveApy = state.apy ? state.apy.apy : NaN;
-  const inDex = parseFloat($("sDexInput").value), inApy = parseFloat($("sApyInput").value);
+  const inDex = parseFloat($("sDexInput").value), inApy = parseFloat($("sApyInput").value), inOpp = parseFloat($("sOppInput").value);
   const dexBase = state.dexTouched && Number.isFinite(inDex) ? inDex / 100 : liveDex;
   const apy = state.apyTouched && Number.isFinite(inApy) ? inApy / 100 : liveApy;
   const gasOn = $("sGasToggle").checked;
@@ -170,18 +170,22 @@ function model() {
   const gasUnlock = gasOn && Number.isFinite(unlockGas) && value > 0 ? unlockGas / value : 0;
   const dex = Number.isFinite(dexBase) ? dexBase + gasDex : NaN;
   const apyEff = Number.isFinite(apy) ? apy : 0;
+  // Opportunity-cost yield on the DEX proceeds: follows the apyUSD APY (live or manual) until edited.
+  const oppManual = state.oppTouched && Number.isFinite(inOpp);
+  const opp = oppManual ? inOpp / 100 : apy;
+  const oppEff = Number.isFinite(opp) ? opp : 0;
   const cost = (t) => unlockCost(curve, u, apyEff, t) + gasUnlock;
   const rows = schedule(curve, u, apyEff, dex - gasUnlock, value).map((r) => ({
     ...r, total: r.total + gasUnlock, costApx: value * (r.total + gasUnlock),
-    // "If I sell on the DEX now": proceeds (net of swap gas when ticked) earning the same APY as the lost yield until day t.
-    dexYield: Number.isFinite(dex) ? dexWithYield(value * (1 - dex), apyEff, r.t) : NaN,
+    // "If I sell on the DEX now": proceeds (net of swap gas when ticked) earning the opportunity-cost yield until day t.
+    dexYield: Number.isFinite(dex) ? dexWithYield(value * (1 - dex), oppEff, r.t) : NaN,
     netUnlock: r.received - value * gasUnlock,
-    deltaReinv: Number.isFinite(dex) ? value * unlockVsDexReinvested(curve, u, apyEff, dex, r.t, gasUnlock) : NaN,
+    deltaReinv: Number.isFinite(dex) ? value * unlockVsDexReinvested(curve, u, oppEff, dex, r.t, gasUnlock) : NaN,
   }));
   const opt = optimalDay(curve, u, apyEff);
   const be = breakeven(curve, u, apyEff, dex - gasUnlock);
-  const beR = breakevenReinvested(curve, u, apyEff, dex, gasUnlock);
-  return { beR, curve, u, amount, gross, value, d, liveDex, liveApy, dexBase, dex, apy, apyEff, gasOn, dexGas, unlockGas, gasUnlock, cost, rows, opt, be };
+  const beR = breakevenReinvested(curve, u, oppEff, dex, gasUnlock);
+  return { beR, opp, oppEff, oppManual, curve, u, amount, gross, value, d, liveDex, liveApy, dexBase, dex, apy, apyEff, gasOn, dexGas, unlockGas, gasUnlock, cost, rows, opt, be };
 }
 
 // ---------- render ----------
@@ -195,7 +199,13 @@ function render() {
   // live / manual inputs
   if (!state.dexTouched) $("sDexInput").value = Number.isFinite(m.liveDex) ? (m.liveDex * 100).toFixed(3) : "";
   if (!state.apyTouched) $("sApyInput").value = Number.isFinite(m.liveApy) ? (m.liveApy * 100).toFixed(2) : "";
+  if (!state.oppTouched) $("sOppInput").value = Number.isFinite(m.apy) ? (m.apy * 100).toFixed(2) : "";
   setHint("sDexHint", !state.dexTouched); setHint("sApyHint", !state.apyTouched);
+  $("sOppHint").textContent = m.oppManual ? "manual" : "= apyUSD APY"; $("sOppHint").classList.toggle("off", m.oppManual);
+  $("sOppInput").placeholder = Number.isFinite(m.apy) ? `${(m.apy * 100).toFixed(2)} (apyUSD APY)` : "--";
+  $("sUseOpp").disabled = !state.oppTouched || !Number.isFinite(m.apy); $("sOppLive").textContent = Number.isFinite(m.apy) ? pct(m.apy) : "--";
+  $("sDyHead").title = `apxUSD received on the DEX now, left earning the opportunity-cost yield (${Number.isFinite(m.opp) ? pct(m.opp) : "--"}${m.oppManual ? ", manual" : ", = apyUSD APY"}; same compounding as lost yield) until that day`;
+  $("sLyHead").title = `Yield the escrow gives up vs holding apyUSD, at the apyUSD APY (${Number.isFinite(m.apy) ? pct(m.apy) : "--"})`;
   $("sLiveDex").textContent = pct(m.liveDex, 3); $("sUseDex").disabled = !Number.isFinite(m.liveDex);
   $("sLiveApy").textContent = Number.isFinite(m.liveApy) ? `${pct(m.liveApy)} (${state.apy.label})` : "--"; $("sUseApy").disabled = !Number.isFinite(m.liveApy);
   $("sGasHint").textContent = Number.isFinite(m.dexGas) ? `swap ${usd(m.dexGas)} · unlock ${usd(m.unlockGas)}` : "n/a";
@@ -252,18 +262,18 @@ function render() {
   $("sBe").textContent = $("cBe").textContent;
   $("sOpt").textContent = optRow ? `day ${optRow.t}` : "--";
   $("sSave").textContent = Number.isFinite(m.dex) && optRow && ready ? `${pct(Math.abs(m.dex - optRow.total))} · ${usd(Math.abs(V(m.dex) - optRow.costApx))}` : "--";
-  $("sRecNote").textContent = `Costs vs the gross redemption value (apyUSD × share price). Unlock = ${pct(m.u)} vault fee + claim fee + yield lost at ${Number.isFinite(m.apy) ? pct(m.apy) : "--"} APY${state.apyTouched ? " (manual)" : ""}${state.dexTouched ? "; DEX discount is manual" : ""}${m.gasOn ? "; gas included" : "; gas excluded"}. apxUSD ≈ $1.`;
+  $("sRecNote").textContent = `Costs vs the gross redemption value (apyUSD × share price). Unlock = ${pct(m.u)} vault fee + claim fee + yield lost at ${Number.isFinite(m.apy) ? pct(m.apy) : "--"} apyUSD APY${state.apyTouched ? " (manual)" : ""}; DEX + yield at ${Number.isFinite(m.opp) ? pct(m.opp) : "--"} opportunity yield${m.oppManual ? " (manual)" : ""}${state.dexTouched ? "; DEX discount is manual" : ""}${m.gasOn ? "; gas included" : "; gas excluded"}. apxUSD ≈ $1.`;
 
   renderTable(m);
   renderChart(m);
 }
 
-// Breakeven when the DEX proceeds are assumed to earn the same APY (table's "DEX + yield" column).
+// Breakeven when the DEX proceeds are assumed to earn the opportunity-cost yield (table's "DEX + yield" column).
 function reinvNote(m) {
   const b = m.beR, b0 = m.be;
   const txt = b.never ? "never" : b.always ? "every day" : `day ${dayStr(b.from)}`;
   const same = b.never === b0.never && b.always === b0.always && b.firstDay === b0.firstDay;
-  return `if DEX proceeds earn the APY: ${txt}${same ? " (same claim day)" : ` (first winning claim day ${b.firstDay ?? "none"} vs ${b0.firstDay ?? "none"})`}`;
+  return `if DEX proceeds earn ${Number.isFinite(m.opp) ? pct(m.opp) : "--"}: ${txt}${same ? " (same claim day)" : ` (first winning claim day ${b.firstDay ?? "none"} vs ${b0.firstDay ?? "none"})`}`;
 }
 
 function renderTable(m) {
@@ -370,6 +380,8 @@ $("sApyInput").addEventListener("input", () => { state.apyTouched = true; render
 $("sGasToggle").addEventListener("change", render);
 $("sUseDex").addEventListener("click", () => { state.dexTouched = false; render(); });
 $("sUseApy").addEventListener("click", () => { state.apyTouched = false; render(); });
+$("sOppInput").addEventListener("input", () => { state.oppTouched = true; render(); });
+$("sUseOpp").addEventListener("click", () => { state.oppTouched = false; render(); });
 let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (!$("paneSell").hidden) render(); }, 120); });
 setInterval(() => { if (sellVisible() && !loading) refresh(); }, REFRESH_MS);
 document.addEventListener("visibilitychange", () => { if (sellVisible() && state.updated && Date.now() - state.updated.getTime() > REFRESH_MS) refresh(); });

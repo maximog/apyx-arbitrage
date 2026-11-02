@@ -954,7 +954,9 @@ h1 {
 .sell-advice { margin-bottom: 20px; }
 .sell-advice .advice-card strong.dex { color: #a3243b; }
 .sell-panel.updating .discount-hero, .sell-panel.updating .sell-advice { opacity: 0.72; }
-.s-controls { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.s-controls { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 960px) { .s-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+#sTable th small { display: block; font-size: .66rem; font-weight: 600; opacity: .7; text-transform: none; }
 .s-check-row { display: flex; align-items: center; gap: 8px; height: 40px; color: #14213d; font-size: .9rem; font-weight: 700; text-transform: none; }
 .s-check-row input { width: 18px; height: 18px; accent-color: #2b4bb3; }
 .lg-b { background: #e8eefc; color: #2b4bb3; } .lg-f { background: #f0f1f4; color: #14213d; }
