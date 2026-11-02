@@ -21,12 +21,12 @@ Second tab (`#sell`, code in `public/sell.js`, pure formulas in `public/sell-mat
 - **Lost yield**: `(1 + APY)^(t/365) − 1`. The escrowed apxUSD earns nothing while unlocking. APY = annualized growth of the on-chain share price (`convertToAssets`) over the last 7 days (24 h as fallback, via archive RPC). It can be overridden.
 - **Total unlock cost** `(t) = fee(t) + lost yield(t)`, in % and apxUSD (`· V`).
   - Optimal day = argmin over days 3…20.
-  - Breakeven = first day on which the unlock cost ≤ DEX cost.
   - The recommendation card compares DEX against the optimal unlock day.
 - **"If sold on DEX + yield" column** (second to last in the per-day table): `DEX(t) = apxUSD out × (1 + opp)^(t/365)`, where `opp` is the **Opportunity yield (%)** input: what the apxUSD from the DEX can earn elsewhere, same compounding as the lost yield. By default it follows the apyUSD APY (live or manual), i.e. the proceeds are put back into apyUSD; once edited it is independent.
-  - Which APY drives what: **apyUSD APY** → lost yield, total unlock cost, cost breakeven, optimal day, chart, recommendation. **Opportunity yield** → DEX + yield, vs DEX, and the reinvested breakeven ("unlock ahead" tag, card/note).
+  - Which APY drives what: **apyUSD APY** → lost yield, total unlock cost, optimal day, the unlock curve of the chart, recommendation. **Opportunity yield** → DEX + yield, vs DEX, and the breakeven.
   - The last column, **vs DEX**, is `unlock received − DEX(t)` in apxUSD (+ = unlock ahead) and as % of the gross value.
-  - In this terminal-value view, the unlock wins iff `fee + ly ≤ dex·(1 + ly)` (when opp = apyUSD APY). The cost view uses `fee + ly ≤ dex`, which charges the lost yield on the full gross value. So this breakeven is slightly earlier (≈0.1 day today); the card and the note show both.
+  - **Breakeven (the only one shown)** = "unlock ahead": first claim day with `unlock received ≥ DEX(t)`, i.e. `(1 − fee(t) − gas) ≥ (1 − dex)·(1 + opp)^(t/365)` (`breakevenReinvested`). It depends on the DEX discount, the opportunity yield and gas, not on the apyUSD APY. The card shows the fractional day and the first whole claim day; the table tags that row with **unlock ahead** next to "Day N" (green line across the row); there is no separate cost-based breakeven anymore.
+  - Chart: the red dashed line is the DEX threshold in cost terms, `dex + ly_apyUSD(t) − (1 − dex)·ly_opp(t)` (`dexEquivalentCost`), so it crosses the unlock-total curve exactly at the unlock-ahead day; the shaded band and the vertical marker are the unlock-ahead range/day. With opp = apyUSD APY it is ≈ flat at the DEX discount.
 - **Overrides**: the DEX discount and apyUSD APY inputs follow the live values until edited; "Use live …" re-links them. The opportunity yield follows the apyUSD APY until edited; "Opportunity yield = apyUSD APY" re-links it. Overrides are not persisted (reset on reload).
 - **Gas** is optional: swap gas from KyberSwap `gasUsd`. Unlock gas = 370k gas (request ≈ 250k + claim ≈ 115k, measured on-chain) at the same gas price.
 - **Refresh**: every 30 s while the tab is visible, plus a 400 ms debounce on size changes.

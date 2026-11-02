@@ -1,5 +1,5 @@
 // "Sell apyUSD" tab: cost of exiting apyUSD → apxUSD on a DEX now vs unlocking and claiming on day 3..20.
-import { DEFAULT_CURVE, DEFAULT_VAULT_FEE, unlockFeeCost, unlockCost, dexCost, priceImpact, schedule, optimalDay, breakeven, breakevenReinvested, unlockVsDexReinvested, dexWithYield, apyFromSharePrice } from "./sell-math.js";
+import { DEFAULT_CURVE, DEFAULT_VAULT_FEE, unlockFeeCost, unlockCost, dexCost, priceImpact, schedule, optimalDay, breakevenReinvested, dexEquivalentCost, firstColTags, unlockVsDexReinvested, dexWithYield, apyFromSharePrice } from "./sell-math.js";
 
 const $ = (id) => document.getElementById(id);
 const APX = "0x98A878b1Cd98131B271883B390f68D2c90674665";
@@ -183,9 +183,10 @@ function model() {
     deltaReinv: Number.isFinite(dex) ? value * unlockVsDexReinvested(curve, u, oppEff, dex, r.t, gasUnlock) : NaN,
   }));
   const opt = optimalDay(curve, u, apyEff);
-  const be = breakeven(curve, u, apyEff, dex - gasUnlock);
+  // Single breakeven ("unlock ahead"): unlock received ≥ DEX proceeds × (1 + opportunity yield)^(t/365).
   const beR = breakevenReinvested(curve, u, oppEff, dex, gasUnlock);
-  return { beR, opp, oppEff, oppManual, curve, u, amount, gross, value, d, liveDex, liveApy, dexBase, dex, apy, apyEff, gasOn, dexGas, unlockGas, gasUnlock, cost, rows, opt, be };
+  const dexEq = (t) => dexEquivalentCost(apyEff, oppEff, dex, t);
+  return { beR, opp, oppEff, oppManual, curve, u, amount, gross, value, d, liveDex, liveApy, dexBase, dex, apy, apyEff, gasOn, dexGas, unlockGas, gasUnlock, cost, rows, opt, dexEq };
 }
 
 // ---------- render ----------
@@ -246,10 +247,12 @@ function render() {
   document.querySelector("#cFirst").previousElementSibling.textContent = `Unlock, earliest claim (day ${first ? first.t : "--"})`;
   $("cFirst").textContent = first ? pct(first.total) : "--";
   $("cFirstSub").textContent = first && ready ? `${usd(first.costApx)} · fees ${pct(first.fee)} + yield ${pct(first.lostYield)}` : "--";
-  const be = m.be;
+  const be = m.beR, oppTxt = `${Number.isFinite(m.opp) ? pct(m.opp) : "--"} opportunity yield${m.oppManual ? "" : " (= apyUSD APY)"}`;
   $("cBe").textContent = !Number.isFinite(m.dex) ? "--" : be.never ? "never" : be.always ? `day ${dayStr(c.tMin)}` : `day ${dayStr(be.from)}`;
-  $("cBeSub").textContent = !Number.isFinite(m.dex) ? "--" : be.never ? "DEX is cheaper on every claim day" : be.always ? "Unlock beats the DEX on every claim day" : `Unlock is cheaper from day ${be.firstDay}${be.to < c.tMax - 1e-6 ? ` to day ${dayStr(be.to)}` : " onward"}`;
-  $("cBeSub").textContent += Number.isFinite(m.dex) ? ` · ${reinvNote(m)}` : "";
+  $("cBeSub").textContent = !Number.isFinite(m.dex) ? "--" : (be.never ? "DEX + yield ends with more on every claim day"
+    : be.always ? "Unlock ends with more on every claim day"
+    : `Unlock ahead from claim day ${be.firstDay}${be.to < c.tMax - 1e-6 ? ` to day ${dayStr(be.to)}` : " onward"}`) + ` · vs DEX proceeds at ${oppTxt}`;
+  $("cBe").parentElement.title = "First claim day on which the unlock receives at least what the DEX proceeds would be worth by then, compounding at the Opportunity yield. Uses the DEX discount, the Opportunity yield and gas (if ticked); the apyUSD APY does not enter.";
 
   // recommendation
   const dexWins = Number.isFinite(m.dex) && optRow && m.dex <= optRow.total;
@@ -268,28 +271,19 @@ function render() {
   renderChart(m);
 }
 
-// Breakeven when the DEX proceeds are assumed to earn the opportunity-cost yield (table's "DEX + yield" column).
-function reinvNote(m) {
-  const b = m.beR, b0 = m.be;
-  const txt = b.never ? "never" : b.always ? "every day" : `day ${dayStr(b.from)}`;
-  const same = b.never === b0.never && b.always === b0.always && b.firstDay === b0.firstDay;
-  return `if DEX proceeds earn ${Number.isFinite(m.opp) ? pct(m.opp) : "--"}: ${txt}${same ? " (same claim day)" : ` (first winning claim day ${b.firstDay ?? "none"} vs ${b0.firstDay ?? "none"})`}`;
-}
 
 function renderTable(m) {
-  const be = m.be;
   const beR = m.beR, V = m.value;
   $("sRows").innerHTML = m.rows.map((r) => {
-    const tags = (r.t === m.opt.day ? '<span class="tag">optimal</span>' : "") + (be.firstDay === r.t ? '<span class="tag be">breakeven</span>' : "");
-    const tagR = beR.firstDay === r.t ? '<span class="tag be">unlock ahead</span>' : "";
+    const tags = firstColTags(r.t, m.opt.day, beR.firstDay).map((g) => `<span class="${g.cls}">${g.text}</span>`).join("");
     const d = r.deltaReinv;
     const cls = Number.isFinite(d) ? (d >= 0 ? "gain" : "loss") : "";
-    const dexCell = Number.isFinite(r.dexYield) ? `${num(r.dexYield)}${tagR}<small>+${num(r.dexYield - V * (1 - m.dex))} yield</small>` : "--";
+    const dexCell = Number.isFinite(r.dexYield) ? `${num(r.dexYield)}<small>+${num(r.dexYield - V * (1 - m.dex))} yield</small>` : "--";
     const vsCell = Number.isFinite(d) ? `${d >= 0 ? "+" : "−"}${num(Math.abs(d))}<small>${d >= 0 ? "+" : "−"}${pct(Math.abs(d / V), 3)}</small>` : "--";
     return `<tr class="${cls}${r.t === m.opt.day ? " opt" : ""}${beR.firstDay === r.t ? " be-row" : ""}"><td>Day ${r.t}${tags}</td><td>${pct(r.claimFee, 3)}</td><td>${pct(r.fee, 3)}</td><td>${pct(r.lostYield, 3)}</td><td>${pct(r.total, 3)}</td><td>${num(r.costApx)}</td><td>${num(r.netUnlock)}</td><td class="dy">${dexCell}</td><td class="v">${vsCell}</td></tr>`;
   }).join("");
   $("sReinvNote").textContent = Number.isFinite(m.dex) && Number.isFinite(V)
-    ? `Breakeven ${m.be.never ? "never" : `day ${dayStr(m.be.always ? m.curve.tMin : m.be.from)}`} on costs; ${reinvNote(m)}. The difference is small: the cost view charges the lost yield on the full gross value, while here the yield accrues only on the smaller DEX proceeds.`
+    ? `Breakeven (unlock ahead): ${beR.never ? "never" : `day ${dayStr(beR.always ? m.curve.tMin : beR.from)}`}${beR.firstDay ? `, first claim day ${beR.firstDay}` : ""}, with the DEX proceeds earning ${Number.isFinite(m.opp) ? pct(m.opp) : "--"}.`
     : "";
 }
 
@@ -308,7 +302,8 @@ function renderChart(m) {
   const iw = W - mg.l - mg.r, ih = H - mg.t - mg.b, c = m.curve;
   const xs = []; for (let t = c.tMin; t <= c.tMax + 1e-9; t += (c.tMax - c.tMin) / 300) xs.push(t);
   const tot = xs.map((t) => m.cost(t)), feeOnly = xs.map((t) => unlockFeeCost(c, m.u, t) + m.gasUnlock);
-  const all = [...tot, ...feeOnly, 0]; if (Number.isFinite(m.dex)) all.push(m.dex);
+  const dexLine = Number.isFinite(m.dex) ? xs.map((t) => m.dexEq(t)) : null;
+  const all = [...tot, ...feeOnly, 0]; if (dexLine) all.push(...dexLine);
   let y0 = Math.min(...all), y1 = Math.max(...all); const pad = (y1 - y0) * 0.1 || 0.001; y1 += pad; y0 = Math.max(y0 - pad, Math.min(0, y0));
   const yt = niceTicks(y0, y1, 6); y0 = Math.min(y0, yt[0]); y1 = Math.max(y1, yt.at(-1));
   const X = (x) => mg.l + ((x - c.tMin) / (c.tMax - c.tMin)) * iw, Y = (y) => mg.t + (1 - (y - y0) / (y1 - y0)) * ih;
@@ -325,13 +320,14 @@ function renderChart(m) {
     if ((t - Math.ceil(c.tMin)) % step === 0 || t === Math.floor(c.tMax)) s += `<text x="${X(t)}" y="${mg.t + ih + 19}" text-anchor="middle" class="tk">${t}</text>`;
   }
   if (Number.isFinite(m.dex)) {
-    const be = m.be;
+    const be = m.beR;
     if (!be.never) s += `<rect x="${X(be.from)}" y="${mg.t}" width="${Math.max(0, X(be.to) - X(be.from))}" height="${ih}" fill="rgba(29,122,70,.08)"/>`;
-    s += `<line x1="${mg.l}" x2="${W - mg.r}" y1="${Y(m.dex)}" y2="${Y(m.dex)}" stroke="${RED}" stroke-width="2.5" stroke-dasharray="7 5"/>`;
-    s += `<text x="${W - mg.r - 6}" y="${Y(m.dex) - 8}" text-anchor="end" class="bl" fill="${RED}">DEX now ${pct(m.dex)}</text>`;
+    // DEX threshold in cost terms (dexEquivalentCost): crosses the unlock-total curve exactly at the unlock-ahead day.
+    s += `<path d="${path(dexLine)}" fill="none" stroke="${RED}" stroke-width="2.5" stroke-dasharray="7 5"/>`;
+    s += `<text x="${W - mg.r - 6}" y="${Y(dexLine.at(-1)) - 8}" text-anchor="end" class="bl" fill="${RED}">DEX + yield (now ${pct(m.dex)})</text>`;
     if (!be.never && !be.always) {
       s += `<line x1="${X(be.from)}" x2="${X(be.from)}" y1="${mg.t}" y2="${mg.t + ih}" stroke="#1d7a46" stroke-dasharray="4 4"/>`;
-      s += `<text x="${X(be.from) + 6}" y="${mg.t + 12}" class="bl">breakeven day ${dayStr(be.from)}</text>`;
+      s += `<text x="${X(be.from) + 6}" y="${mg.t + 12}" class="bl">unlock ahead day ${dayStr(be.from)}</text>`;
     }
   }
   s += `<path d="${path(feeOnly)}" fill="none" stroke="${NAVY}" stroke-width="1.5" stroke-dasharray="3 4" opacity=".7"/>`;

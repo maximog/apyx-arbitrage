@@ -326,7 +326,7 @@
             <div class="advice-text">
               <p class="advice-move" id="sRec">Loading live DEX quote and on-chain data…</p>
               <dl class="advice-stats">
-                <div><dt>Breakeven vs DEX</dt><dd id="sBe">--</dd></div>
+                <div><dt>Breakeven vs DEX + yield</dt><dd id="sBe">--</dd></div>
                 <div><dt>Optimal unlock day</dt><dd id="sOpt">--</dd></div>
                 <div><dt>Saving vs other route</dt><dd id="sSave">--</dd></div>
               </dl>
@@ -395,12 +395,12 @@
             <div class="cp-card"><span>Sell on DEX now</span><strong id="cDex">--</strong><em id="cDexSub">--</em></div>
             <div class="cp-card accent"><span id="cOptLabel">Unlock, optimal day</span><strong id="cOpt">--</strong><em id="cOptSub">--</em></div>
             <div class="cp-card"><span>Unlock, earliest claim (day 3)</span><strong id="cFirst">--</strong><em id="cFirstSub">--</em></div>
-            <div class="cp-card"><span>Breakeven day vs DEX</span><strong id="cBe">--</strong><em id="cBeSub">--</em></div>
+            <div class="cp-card"><span>Breakeven vs DEX + yield</span><strong id="cBe">--</strong><em id="cBeSub">--</em></div>
           </div>
 
           <div class="cp-chart-head"><h3>Total cost of exiting by claim day <small>(% left · apxUSD right)</small></h3></div>
           <div class="cp-chart" id="sChart"></div>
-          <p class="cp-axis">Claim day after unlock · <span class="lg lg-b">unlock total</span> <span class="lg lg-f">fees only</span> <span class="lg lg-r">DEX now</span></p>
+          <p class="cp-axis">Claim day after unlock · <span class="lg lg-b">unlock total</span> <span class="lg lg-f">fees only</span> <span class="lg lg-r" title="DEX discount + unlock lost yield − yield the DEX proceeds earn at the Opportunity yield; the unlock is ahead where its curve is below this line">DEX + yield (cost eq.)</span></p>
 
           <div class="cp-table-wrap">
             <table class="cp-table" id="sTable">
@@ -408,7 +408,7 @@
               <tbody id="sRows"></tbody>
             </table>
           </div>
-          <p class="cp-note"><strong>If sold on DEX + yield</strong> = apxUSD received on the DEX now × (1 + opportunity yield)<sup>t/365</sup>. The opportunity yield is what you can earn on those apxUSD elsewhere (same compounding as the lost yield); by default it equals the apyUSD APY (e.g. putting them back into apyUSD) and you can set it independently. The apyUSD APY drives only the lost yield of the unlock. <strong>vs DEX</strong> = unlock received − that amount on the same day (+ = unlock ends with more; the % is relative to the gross value). The row tagged “unlock ahead” is the first claim day on which the unlock overtakes the DEX path. <span id="sReinvNote"></span></p>
+          <p class="cp-note"><strong>If sold on DEX + yield</strong> = apxUSD received on the DEX now × (1 + opportunity yield)<sup>t/365</sup>. The opportunity yield is what you can earn on those apxUSD elsewhere (same compounding as the lost yield); by default it equals the apyUSD APY (e.g. putting them back into apyUSD) and you can set it independently. The apyUSD APY drives only the lost yield of the unlock. <strong>vs DEX</strong> = unlock received − that amount on the same day (+ = unlock ends with more; the % is relative to the gross value). The single breakeven (card, chart and the “unlock ahead” tag next to the claim day) is the first claim day on which the unlock receives at least the DEX + yield amount; it depends on the DEX discount, the Opportunity yield and gas, not on the apyUSD APY. <span id="sReinvNote"></span></p>
 
           <h4 class="cp-note-title">Assumptions</h4>
           <p class="cp-note">apxUSD ≈ 1 USD (dollar amounts are apxUSD) and no depeg while you wait. Gas is excluded unless “Include gas” is ticked (swap gas from KyberSwap; unlock = request + claim, ≈ 370k gas at the same gas price). DEX discount = 1 − apxUSD received / (apyUSD × share price), using the KyberSwap route at your size (DexScreener spot price as fallback, without price impact). Lost yield = (1 + apyUSD APY)<sup>t/365</sup> − 1, apyUSD APY from the on-chain share price over the last 7 days unless overridden. The opportunity yield (DEX + yield and vs DEX columns, reinvested breakeven) follows the apyUSD APY until edited.</p>

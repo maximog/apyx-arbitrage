@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_CURVE as C, claimFee, unlockFeeCost, lostYield, unlockCost, dexCost, priceImpact, schedule, optimalDay, breakeven, apyFromSharePrice, dexWithYield, unlockVsDexReinvested, breakevenReinvested } from "../public/sell-math.js";
+import { DEFAULT_CURVE as C, claimFee, unlockFeeCost, lostYield, unlockCost, dexCost, priceImpact, schedule, optimalDay, breakeven, apyFromSharePrice, dexWithYield, unlockVsDexReinvested, breakevenReinvested, firstColTags, dexEquivalentCost } from "../public/sell-math.js";
 
 const near = (a, b, eps = 1e-10) => assert.ok(Math.abs(a - b) < eps, `${a} ≉ ${b}`);
 const u = 0.001;
@@ -114,4 +114,36 @@ test("apyUSD APY drives the lost yield, not DEX + yield or vs DEX", () => {
     assert.ok(b[i].lostYield > a[i].lostYield);
     near(b[i].lostYield, lostYield(0.25, b[i].t));
   }
+});
+
+test("single breakeven: 'unlock ahead' tag in the first column on the right day, moves with the opportunity yield", () => {
+  const dex = 0.0164;
+  for (const opp of [0, 0.08, 0.14, 0.30]) {
+    const b = breakevenReinvested(C, u, opp, dex);
+    const rows = schedule(C, u, 0.14, dex, 10000, opp);
+    const first = rows.find((r) => r.deltaReinv >= 0);
+    assert.equal(b.firstDay, first ? first.t : null); // tag day = first row where unlock ≥ DEX + yield
+    if (first) assert.ok(rows.find((r) => r.t === first.t - 1)?.deltaReinv < 0 || first.t === C.tMin);
+    for (const r of rows) {
+      const tags = firstColTags(r.t, 20, b.firstDay).map((g) => g.text);
+      assert.equal(tags.includes("unlock ahead"), r.t === b.firstDay);
+      assert.ok(!tags.includes("breakeven")); // the old cost-based tag no longer exists
+    }
+  }
+  const days = [0, 0.08, 0.14, 0.30].map((o) => breakevenReinvested(C, u, o, dex).firstDay);
+  assert.deepEqual(days, [...days].sort((a, b) => a - b)); // higher opportunity yield → later (or equal) unlock-ahead day
+  assert.ok(days[0] < days[3]);
+  // independent of the apyUSD APY
+  assert.deepEqual(schedule(C, u, 0.05, dex, 1, 0.08).map((r) => r.deltaReinv >= 0), schedule(C, u, 0.30, dex, 1, 0.08).map((r) => r.deltaReinv >= 0));
+  assert.deepEqual(firstColTags(20, 20, null).map((g) => g.text), ["optimal"]);
+});
+
+test("chart DEX threshold crosses the unlock-total curve exactly at the unlock-ahead day", () => {
+  const dex = 0.0164;
+  for (const [apy, opp] of [[0.14, 0.14], [0.14, 0.08], [0.05, 0.30], [0.30, 0]]) {
+    const b = breakevenReinvested(C, u, opp, dex);
+    if (b.never || b.always) continue;
+    near(unlockCost(C, u, apy, b.from), dexEquivalentCost(apy, opp, dex, b.from), 1e-9);
+  }
+  near(dexEquivalentCost(0.14, 0.14, dex, 0), dex);
 });

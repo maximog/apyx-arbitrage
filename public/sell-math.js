@@ -34,6 +34,20 @@ export const dexWithYield = (apxOut, oppApy, t) => apxOut * (1 + lostYield(oppAp
 export const unlockVsDexReinvested = (c, u, oppApy, dex, t, extraUnlock = 0) =>
   (1 - unlockFeeCost(c, u, t) - extraUnlock) - (1 - dex) * (1 + lostYield(oppApy, t));
 
+// The single breakeven shown in the UI ("unlock ahead") as a cost-chart threshold: unlock total cost(t) = fee + lostYield(apy) + extra
+// is ≤ this curve exactly when unlockVsDexReinvested ≥ 0, i.e. dex + lostYield(apy, t) − (1 − dex)·lostYield(oppApy, t).
+// With oppApy = apy it is ≈ dex (slightly rising); a lower opportunity yield raises it (DEX path worse), a higher one lowers it.
+export const dexEquivalentCost = (apy, oppApy, dex, t) => dex + lostYield(apy, t) - (1 - dex) * lostYield(oppApy, t);
+
+// Tags in the first (claim-day) column of the per-day table: "optimal" (cheapest unlock day) and "unlock ahead"
+// (first claim day on which unlock received ≥ DEX + opportunity yield). There is no separate cost "breakeven" tag.
+export function firstColTags(t, optDay, aheadDay) {
+  const tags = [];
+  if (t === optDay) tags.push({ cls: "tag", text: "optimal" });
+  if (aheadDay != null && t === aheadDay) tags.push({ cls: "tag be", text: "unlock ahead" });
+  return tags;
+}
+
 // One row per integer day from tMin to tMax. `apy` = apyUSD APY (lost yield); `oppApy` = yield on the DEX proceeds (defaults to `apy`).
 export function schedule(c, u, apy, dex, value = 1, oppApy = apy) {
   const rows = [];
